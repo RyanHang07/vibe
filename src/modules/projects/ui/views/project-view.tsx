@@ -1,7 +1,5 @@
 "use client"
 
-import { useTRPC } from "@/trpc/client";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { MessagesContainer } from "../components/messages-container";
 import { Suspense } from "react";
 import { Fragment } from "@/generated/prisma";
@@ -11,6 +9,8 @@ import { FragmentWeb } from "../components/fragment-web";
 import { EyeIcon, CodeIcon, CrownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { FileExplorer } from "@/components/file-explorer";
+import { UserControl } from "@/components/user-control";
 
 import {
     Tabs,
@@ -24,7 +24,7 @@ import {
     ResizablePanel,
     ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { FileExplorer } from "@/components/file-explorer";
+
 
 
 
@@ -79,12 +79,13 @@ export const ProjectView = ({projectId}: Props) => {
                                     <CodeIcon /> <span>Code</span>
                                 </TabsTrigger>
                             </TabsList>
-                            <div className="ml-auto flex- items-center gap-x-2">
+                            <div className="ml-auto flex items-center gap-x-2">
                                 <Button asChild size="sm" variant="tertiary">
                                     <Link href="/pricing">
                                         <CrownIcon /> Upgrade
                                     </Link>
                                 </Button>
+                                <UserControl />
                             </div>
                         </div>
                         <TabsContent value="preview">
