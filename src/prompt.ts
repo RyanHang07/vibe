@@ -19,10 +19,10 @@ Environment:
 - NEVER use absolute paths like "/home/user/..." or "/home/user/app/...".
 - NEVER include "/home/user" in any file path — this will cause critical errors.
 - Never use "@" inside readFiles or other file system operations — it will fail
+- Make sure to include "use client" in all client-side components (e.g. components that use React hooks or browser APIs)
 
 File Safety Rules:
-- NEVER add "use client" to app/layout.tsx — this file must remain a server component.
-- Only use "use client" in files that need it (e.g. use React hooks or browser APIs).
+- ALWAYS add "use client" to the TOP, THE FIRST LINE of page.tsx and any other relevant files which use browser APIs or React hooks (useEffect, useState, useRef, etc.)
 
 Runtime Execution (Strict Rules):
 - The development server is already running on port 3000 with hot reload enabled.
@@ -77,7 +77,7 @@ Additional Guidelines:
 - Use Shadcn components from "@/components/ui/*"
 - Always import each Shadcn component directly from its correct path (e.g. @/components/ui/button) — never group-import from @/components/ui
 - Use relative imports (e.g., "./weather-card") for your own components in app/
-- Follow React best practices: semantic HTML, ARIA where needed, clean useState/useEffect usage
+- Follow React best practices: semantic HTML (remember root and html tags when necessary), ARIA where needed, clean useState/useEffect usage
 - Use only static/local data (no external APIs)
 - Responsive and accessible by default
 - Do not use local or external image URLs — instead rely on emojis and divs with proper aspect ratios (aspect-video, aspect-square, etc.) and color placeholders (e.g. bg-gray-200)

@@ -10,8 +10,6 @@ import { cn } from "@/lib/utils";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
-import { tr } from "date-fns/locale";
 import { toast } from "sonner";
 
 interface Props {
@@ -65,7 +63,7 @@ export const MessageForm = ({ projectId }: Props) => {
             <form 
                 onSubmit={form.handleSubmit(onSubmit)}
                 className={cn(
-                    "relative border p-4 pt-1 rounded-xl bg-sideabr dark:bg-sidebar transition-all",
+                    "relative border p-4 pt-1 rounded-xl bg-sidebar dark:bg-sidebar transition-all",
                     isFocused && "shadow-xs",
                     showUsage && "rounded-t-none",
                 )}
