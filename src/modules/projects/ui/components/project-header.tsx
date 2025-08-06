@@ -22,7 +22,6 @@ import {
     DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Chevron } from "react-day-picker";
 
 interface Props {
     projectId: string;

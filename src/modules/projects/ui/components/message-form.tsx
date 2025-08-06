@@ -12,7 +12,7 @@ import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Usage } from "./usage";
+// import { Usage } from "./usage";
 import ApiKeyInput from "@/components/api-key-form"; // Import your API key component
 
 interface Props {
@@ -43,7 +43,7 @@ export const MessageForm = ({ projectId }: Props) => {
     });
 
     const createMessage = useMutation(trpc.messages.create.mutationOptions({
-        onSuccess: (date) => {
+        onSuccess: () => {
             form.reset();
             queryClient.invalidateQueries(
                 trpc.messages.getMany.queryOptions({ projectId }),

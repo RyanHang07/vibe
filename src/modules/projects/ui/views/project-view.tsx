@@ -6,9 +6,9 @@ import { Fragment } from "@/generated/prisma";
 import { useState } from "react";
 import { ProjectHeader } from "../components/project-header";
 import { FragmentWeb } from "../components/fragment-web";
-import { EyeIcon, CodeIcon, CrownIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { EyeIcon, CodeIcon, /*CrownIcon*/ } from "lucide-react";
+// import { Button } from "@/components/ui/button";
+// import Link from "next/link";
 import { FileExplorer } from "@/components/file-explorer";
 import { UserControl } from "@/components/user-control";
 import { useAuth } from "@clerk/nextjs";
@@ -36,8 +36,8 @@ export const ProjectView = ({projectId}: Props) => {
     const [tabState, setTabState] = useState<"preview" | "code">("preview");
 
     const { has } = useAuth();
-    const hasProAccess = has?.({plan: "pro"});
-    const hasFreeAccess = has?.({plan: "free_user"});
+    // const hasProAccess = has?.({plan: "pro"});
+    // const hasFreeAccess = has?.({plan: "free_user"});
     
     return (
         <div className="h-screen">
