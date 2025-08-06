@@ -4,7 +4,7 @@ import { Sandbox } from "e2b";
 export async function getSandbox(sandboxId: string) {
     const sandbox = await Sandbox.connect(sandboxId) ;
     return sandbox;
-}
+};
 
 export function lastAssistantTextMessageContent(result: AgentResult) {
     const lastAssistantTextMessageIndex = result.output.findLastIndex(
@@ -19,4 +19,18 @@ export function lastAssistantTextMessageContent(result: AgentResult) {
         ? typeof message.content === "string"
         ? message.content
         : message.content.map((c) => c.text).join("") : undefined;
-}
+};
+
+export const parseAgentOutput = (value: Message[]) => {
+    const output = value[0];
+      
+    if (output.type!== "text") {
+        return "Fragment";
+    }
+
+    if (Array.isArray(output.content)) {
+        return output.content.map((txt) => txt.text).join("");
+    } else {
+        return output.content;
+    }
+};
