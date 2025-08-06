@@ -36,6 +36,7 @@ export const messagesRouter = createTRPCRouter({
                     .min(1, { message: "Message is required" })
                     .max(10000, { message: "Value is too long" }),
                 projectId: z.string().min(1, { message: "Project ID is required" }),
+                apiKey: z.string().optional(), // Add API key input
             })
         )
         .mutation(async ({ input, ctx }) => {
@@ -83,6 +84,7 @@ export const messagesRouter = createTRPCRouter({
                     data: {
                       value: input.value,
                       projectId: input.projectId,
+                      apiKey: input.apiKey, // Pass the API key to Inngest
                     }
             })
 
