@@ -15,9 +15,16 @@ export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
   { event: "code-agent/run" },
   async ({ event, step }) => {
+    // Extract API key from event data, fallback to environment variable
+    const apiKey = event.data.apiKey || process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error("No OpenAI API key provided");
+    }
+
     const sandboxId = await step.run("get-sandbox-id", async () => {
-      await sandbox.setTimeout(3 * 10 * 60_000);
       const sandbox = await Sandbox.create("vibe-nextjs-ryan-test-2");
+      await sandbox.setTimeout(3 * 10 * 60_000);
       return sandbox.sandboxId;
     })
 
@@ -47,8 +54,8 @@ export const codeAgentFunction = inngest.createFunction(
 
     const state = createState<AgentState>(
       {
-      summary: "",
-      files: {},
+        summary: "",
+        files: {},
       },
       {
         messages: previousMessages
@@ -60,8 +67,8 @@ export const codeAgentFunction = inngest.createFunction(
       description: "An expert coding agent",
       system: PROMPT,
       model: openai({ 
-        model: "gpt-4.1", 
-        apiKey: process.env.OPENAI_API_KEY, 
+        model: "gpt-4", // Updated to use a valid model
+        apiKey: apiKey, // Use dynamic API key
         defaultParameters: {
           temperature: 0.1,
         }
@@ -187,12 +194,14 @@ export const codeAgentFunction = inngest.createFunction(
 
     const result = await network.run(event.data.value, { state });
 
+    // Use the same API key for the helper agents
     const fragmentTitleGenerator = createAgent({
       name: "fragment-title-generator",
       description: "A fragment title generator for code fragment",
       system: FRAGMENT_TITLE_PROMPT,
       model: openai({
         model:"gpt-4o",
+        apiKey: apiKey, // Use same API key
       })
     })
 
@@ -202,6 +211,7 @@ export const codeAgentFunction = inngest.createFunction(
       system: RESPONSE_PROMPT,
       model: openai({
         model:"gpt-4o",
+        apiKey: apiKey, // Use same API key
       })
     })
 
@@ -210,7 +220,6 @@ export const codeAgentFunction = inngest.createFunction(
 
     const isError = !result.state.data.summary ||
     Object.keys(result.state.data.files || {}).length === 0;
-
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
       const sandbox = await getSandbox(sandboxId);

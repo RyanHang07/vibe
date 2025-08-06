@@ -45,23 +45,27 @@ export const projectsRouter = createTRPCRouter({
                 value: z.string()
                     .min(1, { message: "Value is required" })
                     .max(10000, { message: "Value is too long" }),
+                apiKey: z.string().optional(), // Add API key as optional input
             }),
         )
         .mutation(async ({ input, ctx }) => {
 
-            try {
-                await consumeCredits();
-            } catch (error) {
-                if (error instanceof Error) {
-                    throw new TRPCError({
-                        code: "BAD_REQUEST",
-                        message: "Something went wrong",
-                    });
-                } else {
-                    throw new TRPCError({
-                        code: "TOO_MANY_REQUESTS",
-                        message: "You have run out of credits",
-                    });
+            // Skip credit consumption if user provides their own API key
+            if (!input.apiKey) {
+                try {
+                    await consumeCredits();
+                } catch (error) {
+                    if (error instanceof Error) {
+                        throw new TRPCError({
+                            code: "BAD_REQUEST",
+                            message: "Something went wrong",
+                        });
+                    } else {
+                        throw new TRPCError({
+                            code: "TOO_MANY_REQUESTS",
+                            message: "You have run out of credits",
+                        });
+                    }
                 }
             }
 
@@ -86,6 +90,7 @@ export const projectsRouter = createTRPCRouter({
                     data: {
                       value: input.value,
                       projectId: createdProject.id,
+                      apiKey: input.apiKey, // Pass the API key to Inngest
                     }
             });
 

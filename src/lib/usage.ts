@@ -3,7 +3,7 @@ import { prisma } from "./db";
 import { auth } from "@clerk/nextjs/server";
 
 
-const FREE_POINTS = 3;
+const FREE_POINTS = 10000; //updated to 100 temporarily to support self-provided openai usages
 const PRO_POINTS = 100;
 const DURATION = 30 * 24 * 60 * 60;
 const GENERATION_COST = 1;
