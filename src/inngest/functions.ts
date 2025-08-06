@@ -16,6 +16,7 @@ export const codeAgentFunction = inngest.createFunction(
   { event: "code-agent/run" },
   async ({ event, step }) => {
     const sandboxId = await step.run("get-sandbox-id", async () => {
+      await sandbox.setTimeout(3 * 10 * 60_000);
       const sandbox = await Sandbox.create("vibe-nextjs-ryan-test-2");
       return sandbox.sandboxId;
     })
@@ -30,6 +31,7 @@ export const codeAgentFunction = inngest.createFunction(
         orderBy: {
           createdAt: "desc",
         },
+        take: 5,
       });
 
       for (let i = 0; i < messages.length; i++) {
@@ -40,7 +42,7 @@ export const codeAgentFunction = inngest.createFunction(
         })
       }
 
-      return formattedMessages;
+      return formattedMessages.reverse();
     });
 
     const state = createState<AgentState>(
