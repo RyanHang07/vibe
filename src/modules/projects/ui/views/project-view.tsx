@@ -11,7 +11,6 @@ import { EyeIcon, CodeIcon, /*CrownIcon*/ } from "lucide-react";
 // import Link from "next/link";
 import { FileExplorer } from "@/components/file-explorer";
 import { UserControl } from "@/components/user-control";
-import { useAuth } from "@clerk/nextjs";
 
 import {
     Tabs,
@@ -35,10 +34,6 @@ export const ProjectView = ({projectId}: Props) => {
     const [activeFragment, setActiveFragment] = useState<Fragment | null>(null);
     const [tabState, setTabState] = useState<"preview" | "code">("preview");
 
-    const { has } = useAuth();
-    // const hasProAccess = has?.({plan: "pro"});
-    // const hasFreeAccess = has?.({plan: "free_user"});
-    
     return (
         <div className="h-screen">
             <ResizablePanelGroup direction="horizontal">

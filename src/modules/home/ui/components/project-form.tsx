@@ -67,7 +67,11 @@ export const ProjectForm = () => {
         // Include the API key in the submission
         await createProject.mutateAsync({
             value: values.value,
-            apiKey: userApiKey, // Pass the API key to your tRPC mutation
+            // `?? undefined` is load-bearing. The tRPC input is
+            // `z.string().optional()`, which is `string | undefined` —
+            // zod rejects null. Sending `null` when no key was entered
+            // failed validation on every keyless project creation.
+            apiKey: userApiKey ?? undefined,
         })
     }
 

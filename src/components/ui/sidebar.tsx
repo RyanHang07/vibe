@@ -599,17 +599,36 @@ function SidebarMenuBadge({
   )
 }
 
+/**
+ * Varied widths so a column of skeletons doesn't read as identical bars.
+ *
+ * Upstream shadcn computes this with `Math.random()` during render. That is
+ * impure twice over: the server and the client pick different widths, so
+ * React discards the server HTML for every skeleton row on hydration, and the
+ * width can change on any re-render.
+ *
+ * A fixed table indexed by `seed` keeps the visual intent and is stable
+ * across server, client and re-render. Callers rendering a list should pass
+ * the map index; the default is a single consistent width.
+ */
+const SKELETON_WIDTHS = ["54%", "72%", "61%", "85%", "67%"] as const
+
 function SidebarMenuSkeleton({
   className,
   showIcon = false,
+  seed = 0,
   ...props
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
+  /** Index into the width table. Pass the list index for variety. */
+  seed?: number
 }) {
-  // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
+  const index = Number.isFinite(seed) ? Math.trunc(seed) : 0
+  const width =
+    SKELETON_WIDTHS[
+      ((index % SKELETON_WIDTHS.length) + SKELETON_WIDTHS.length) %
+        SKELETON_WIDTHS.length
+    ]
 
   return (
     <div

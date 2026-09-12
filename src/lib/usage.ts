@@ -3,10 +3,29 @@ import { prisma } from "./db";
 import { auth } from "@clerk/nextjs/server";
 
 
-const FREE_POINTS = 10000; //updated to 100 temporarily to support self-provided openai usages
-const PRO_POINTS = 100;
+/**
+ * Generations included per billing window, by plan.
+ *
+ * These shipped inverted: FREE was 10000 against a PRO of 100, so free
+ * accounts had a hundred times the paid allowance. A comment claimed the
+ * value was 100 while the code said 10000. See docs/AUDIT.md S2.
+ *
+ * Pick the real numbers deliberately. The invariant below makes the
+ * inversion impossible to reintroduce silently.
+ */
+export const FREE_POINTS = 5;
+export const PRO_POINTS = 100;
+
+/** 30 days, in seconds. */
 const DURATION = 30 * 24 * 60 * 60;
+
 const GENERATION_COST = 1;
+
+if (PRO_POINTS <= FREE_POINTS) {
+  throw new Error(
+    `Plan allowances are inverted: PRO_POINTS (${PRO_POINTS}) must exceed FREE_POINTS (${FREE_POINTS}).`,
+  );
+}
 
 export async function getUsageTracker() {
 

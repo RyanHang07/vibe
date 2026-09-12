@@ -1,10 +1,17 @@
 import { inngest } from "./client";
-import { openai, createAgent, createTool, createNetwork, type Tool, type Message, createState } from "@inngest/agent-kit";
+import { createAgent, createTool, createNetwork, type Tool, type Message, createState } from "@inngest/agent-kit";
 import { Sandbox } from "e2b";
 import { getSandbox, lastAssistantTextMessageContent, parseAgentOutput } from "./utils";
 import { z } from "zod";
 import { PROMPT, FRAGMENT_TITLE_PROMPT, RESPONSE_PROMPT } from "@/prompt";
 import { prisma } from "@/lib/db";
+import { getProvider, modelFor } from "@/lib/models";
+import {
+  MAX_AGENT_ITERATIONS,
+  MESSAGE_HISTORY_DEPTH,
+  SANDBOX_TEMPLATE,
+  SANDBOX_TIMEOUT_MS,
+} from "@/lib/config";
 
 interface AgentState {
   summary: string;
@@ -15,16 +22,14 @@ export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
   { event: "code-agent/run" },
   async ({ event, step }) => {
-    // Extract API key from event data, fallback to environment variable
-    const apiKey = event.data.apiKey || process.env.OPENAI_API_KEY;
-    
-    if (!apiKey) {
-      throw new Error("No OpenAI API key provided");
-    }
+    // A user-supplied key, when present, overrides the environment for this run.
+    // modelFor() throws with a readable message when neither is available.
+    const apiKey: string | undefined = event.data.apiKey;
+    const provider = getProvider(event.data.provider);
 
     const sandboxId = await step.run("get-sandbox-id", async () => {
-      const sandbox = await Sandbox.create("vibe-nextjs-ryan-test-2");
-      await sandbox.setTimeout(3 * 10 * 60_000);
+      const sandbox = await Sandbox.create(SANDBOX_TEMPLATE);
+      await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
       return sandbox.sandboxId;
     })
 
@@ -38,7 +43,7 @@ export const codeAgentFunction = inngest.createFunction(
         orderBy: {
           createdAt: "desc",
         },
-        take: 5,
+        take: MESSAGE_HISTORY_DEPTH,
       });
 
       for (let i = 0; i < messages.length; i++) {
@@ -66,13 +71,7 @@ export const codeAgentFunction = inngest.createFunction(
       name: "code-agent",
       description: "An expert coding agent",
       system: PROMPT,
-      model: openai({ 
-        model: "gpt-4.1", // Updated to use a valid model
-        apiKey: apiKey, // Use dynamic API key
-        defaultParameters: {
-          temperature: 0.1,
-        }
-      }),
+      model: modelFor({ role: "coder", apiKey, provider }),
       tools: [
         createTool({
           name: "terminal",
@@ -180,7 +179,7 @@ export const codeAgentFunction = inngest.createFunction(
     const network = createNetwork<AgentState>({
       name: "coding-agent-network",
       agents: [codeAgent],
-      maxIter: 15,
+      maxIter: MAX_AGENT_ITERATIONS,
       defaultState: state,
       router: async ({ network }) => {
         const summary = network.state.data.summary;
@@ -194,29 +193,28 @@ export const codeAgentFunction = inngest.createFunction(
 
     const result = await network.run(event.data.value, { state });
 
-    // Use the same API key for the helper agents
+    // Helper agents reuse the run's provider and key.
     const fragmentTitleGenerator = createAgent({
       name: "fragment-title-generator",
       description: "A fragment title generator for code fragment",
       system: FRAGMENT_TITLE_PROMPT,
-      model: openai({
-        model:"gpt-4o",
-        apiKey: apiKey, // Use same API key
-      })
+      model: modelFor({ role: "titler", apiKey, provider }),
     })
 
     const responseGenerator = createAgent({
       name: "response-generator",
       description: "A response generator",
       system: RESPONSE_PROMPT,
-      model: openai({
-        model:"gpt-4o",
-        apiKey: apiKey, // Use same API key
-      })
+      model: modelFor({ role: "responder", apiKey, provider }),
     })
 
-    const { output: fragmentTitleOutput } = await fragmentTitleGenerator.run(result.state.data.summary);
-    const { output: responseOutput } = await responseGenerator.run(result.state.data.summary);
+    // Independent of each other — running them in sequence doubled the
+    // user-visible wait for no reason.
+    const [{ output: fragmentTitleOutput }, { output: responseOutput }] =
+      await Promise.all([
+        fragmentTitleGenerator.run(result.state.data.summary),
+        responseGenerator.run(result.state.data.summary),
+      ]);
 
     const isError = !result.state.data.summary ||
     Object.keys(result.state.data.files || {}).length === 0;

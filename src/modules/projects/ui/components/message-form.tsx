@@ -30,8 +30,10 @@ export const MessageForm = ({ projectId }: Props) => {
     const queryClient = useQueryClient();
     const router = useRouter();
     
-    // Add API key state
-    const [validApiKey, setValidApiKey] = useState(null);
+    // `useState(null)` infers the type as `null`, so the setter only ever
+    // accepted null and this state was untyped in practice. Runtime was fine;
+    // the compiler was simply not checking anything here.
+    const [validApiKey, setValidApiKey] = useState<string | null>(null);
 
     const { data: usage } = useQuery(trpc.usage.status.queryOptions());
 

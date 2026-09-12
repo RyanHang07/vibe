@@ -1,122 +1,166 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Eye, EyeOff, Key, Shield, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from "react";
+import { Eye, EyeOff, Key, ShieldAlert, X } from "lucide-react";
 
-export default function ApiKeyInput({ onApiKeyChange, placeholder = "Enter your OpenAI API key for Inngest agents..." }) {
-  const [apiKey, setApiKey] = useState('');
+import { cn } from "@/lib/utils";
+
+/**
+ * NOTE ON THE SECURITY COPY BELOW.
+ *
+ * An earlier version of this component told the user their key was
+ * "never sent to our servers". That was false: the key is sent as a tRPC
+ * input, placed inside an Inngest event payload, and is therefore persisted
+ * and visible in Inngest's dashboard. See docs/AUDIT.md S1.
+ *
+ * The copy now describes what the code actually does. When the plumbing is
+ * fixed (key held server-side, only a reference passed through the event),
+ * update this copy in the same commit as the mechanism — not before.
+ */
+
+export type ApiKeyInputProps = {
+  /** Called with the trimmed key when it looks valid, or null when it doesn't. */
+  onApiKeyChange?: (apiKey: string | null) => void;
+  placeholder?: string;
+  className?: string;
+};
+
+/** OpenAI keys start with `sk-`. Length is a weak check but catches truncation. */
+export const looksLikeKey = (value: string): boolean =>
+  value.startsWith("sk-") && value.length >= 48;
+
+export function ApiKeyInput({
+  onApiKeyChange,
+  placeholder = "sk-...",
+  className,
+}: ApiKeyInputProps) {
+  const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
-  const [isValid, setIsValid] = useState(null);
   const [isFocused, setIsFocused] = useState(false);
 
-  // Validate API key format (OpenAI keys start with 'sk-' and are typically 51 characters)
-  const validateApiKey = (key) => {
-    const trimmedKey = key.trim();
-    if (!trimmedKey) return null;
-    return trimmedKey.startsWith('sk-') && trimmedKey.length >= 48;
-  };
+  const trimmed = apiKey.trim();
+  /** null = nothing entered yet, which is a third state and not "invalid". */
+  const isValid: boolean | null = trimmed ? looksLikeKey(trimmed) : null;
 
   useEffect(() => {
-    const valid = validateApiKey(apiKey);
-    setIsValid(valid);
-    
-    // Call the parent callback with the API key
-    if (onApiKeyChange) {
-      onApiKeyChange(valid ? apiKey.trim() : null);
-    }
-  }, [apiKey, onApiKeyChange]);
+    onApiKeyChange?.(isValid ? trimmed : null);
+  }, [trimmed, isValid, onApiKeyChange]);
 
-  const handleInputChange = (e) => {
-    setApiKey(e.target.value);
-  };
-
-  const toggleShowKey = () => {
-    setShowKey(!showKey);
-  };
-
-  const clearKey = () => {
-    setApiKey('');
+  const clearKey = useCallback(() => {
+    setApiKey("");
     setShowKey(false);
-  };
+  }, []);
+
+  const borderClass =
+    isFocused
+      ? "border-ring ring-ring/40 ring-2"
+      : isValid === true
+        ? "border-emerald-500/60"
+        : isValid === false
+          ? "border-destructive/60"
+          : "border-input hover:border-ring/50";
 
   return (
-    <div className="w-full max-w-3xl mx-auto">
-      <div className="mb-4">
-        <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2">
-          <Key className="w-4 h-4" />
-          OpenAI API Key
-        </label>
-        
-        <div className={`relative rounded-lg border-2 transition-all duration-200 ${
-          isFocused 
-            ? 'border-blue-500 ring-2 ring-blue-500/20' 
-            : isValid === true 
-              ? 'border-green-500' 
-              : isValid === false 
-                ? 'border-red-500' 
-                : 'border-gray-300 hover:border-gray-400'
-        }`}>
-          <input
-            type={showKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={handleInputChange}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            placeholder={placeholder}
-            className="w-full px-4 py-3 pr-24 rounded-lg border-0 focus:outline-none focus:ring-0 font-mono text-sm bg-transparent"
-          />
-          
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            {apiKey && (
-              <button
-                type="button"
-                onClick={clearKey}
-                className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors rounded"
-                title="Clear API key"
-              >
-                <AlertCircle className="w-4 h-4" />
-              </button>
-            )}
-            
-            {apiKey && (
-              <button
-                type="button"
-                onClick={toggleShowKey}
-                className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors rounded"
-                title={showKey ? "Hide API key" : "Show API key"}
-              >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            )}
+    <div className={cn("w-full max-w-3xl mx-auto", className)}>
+      <label
+        htmlFor="openai-api-key"
+        className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground"
+      >
+        <Key className="size-4" aria-hidden />
+        OpenAI API key
+        <span className="text-xs font-normal">(optional)</span>
+      </label>
+
+      <div
+        className={cn(
+          "relative rounded-lg border-2 bg-background transition-colors",
+          borderClass,
+        )}
+      >
+        <input
+          id="openai-api-key"
+          name="openai-api-key"
+          type={showKey ? "text" : "password"}
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          placeholder={placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={isValid === false}
+          aria-describedby="openai-api-key-status openai-api-key-notice"
+          className="w-full rounded-lg border-0 bg-transparent px-4 py-3 pr-20 font-mono text-sm focus:outline-none focus:ring-0"
+        />
+
+        {trimmed.length > 0 && (
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowKey((current) => !current)}
+              className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+            >
+              {showKey ? (
+                <EyeOff className="size-4" aria-hidden />
+              ) : (
+                <Eye className="size-4" aria-hidden />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={clearKey}
+              className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="Clear API key"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Status indicator */}
-      {apiKey && (
-        <div className={`flex items-center gap-2 text-sm ${
-          isValid ? 'text-green-600' : 'text-red-600'
-        }`}>
-          <div className={`w-2 h-2 rounded-full ${
-            isValid ? 'bg-green-500' : 'bg-red-500'
-          }`} />
-          {isValid ? 'Valid API key format' : 'Invalid API key format'}
-        </div>
-      )}
+      <p
+        id="openai-api-key-status"
+        role="status"
+        className="mt-2 min-h-5 text-sm"
+      >
+        {isValid === false && (
+          <span className="text-destructive">
+            That doesn&apos;t look like an OpenAI key. They begin with{" "}
+            <code className="font-mono">sk-</code>.
+          </span>
+        )}
+        {isValid === true && (
+          <span className="text-emerald-600 dark:text-emerald-400">
+            Key format looks right. It isn&apos;t checked against OpenAI until
+            you run a generation.
+          </span>
+        )}
+      </p>
 
-      {/* Security notice */}
-      <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-        <div className="flex items-start gap-2">
-          <Shield className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-blue-800">
-            <p className="font-medium mb-1">Your API key is secure</p>
-            <p className="text-blue-600">
-              Your API key is stored temporarily in your browser's memory and never sent to our servers. 
-              It will be cleared when you refresh or close the page.
-            </p>
-          </div>
+      <div
+        id="openai-api-key-notice"
+        className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 p-3 text-sm"
+      >
+        <ShieldAlert
+          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <div className="text-muted-foreground">
+          <p className="mb-1 font-medium text-foreground">
+            Where this key goes
+          </p>
+          <p>
+            Your key is sent to our server and passed to the background job that
+            runs the agent, where it is used to call OpenAI on your behalf. It
+            is not written to our database, but it does appear in our job
+            queue&apos;s event log. Leave this blank to use your account credits
+            instead.
+          </p>
         </div>
       </div>
     </div>
   );
 }
+
+export default ApiKeyInput;

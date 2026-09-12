@@ -17,11 +17,14 @@ export const Usage = ({ points, msBeforeNext }: Props) => {
 
     const resetTime = useMemo(() => {
         try {
+            // `msBeforeNext` is already a duration, so there is no reason to
+            // read the clock at all. The previous form did
+            // `intervalToDuration({ start: new Date(), end: Date.now() + ms })`,
+            // which computed the same answer while making render impure:
+            // the server and the client read different clocks, which is a
+            // hydration mismatch, and the value changed on every re-render.
             return formatDuration(
-                intervalToDuration({
-                    start: new Date(),
-                    end: new Date(Date.now() + msBeforeNext), 
-                }),
+                intervalToDuration({ start: 0, end: msBeforeNext }),
                 { format: ["months", "days", "hours", "minutes"] }
             );
         } catch (error) {
