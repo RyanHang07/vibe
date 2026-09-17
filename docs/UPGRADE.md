@@ -255,6 +255,36 @@ Stage 5 is the one that can actually break the product rather than the build. Le
 
 ---
 
+## Environment note: npm blocks install scripts
+
+npm on this machine enforces an `allowScripts` policy, so postinstall scripts don't run unless the package is explicitly approved. It has caused three confusing failures already, and it will cause more, because **the packages it affects are the ones that download platform-native binaries** — and none of them fail at install time. They fail later, with an error that doesn't mention scripts.
+
+| Package | What its postinstall does |
+|---|---|
+| `@prisma/engines`, `prisma` | Prisma query engine binaries |
+| `@tailwindcss/oxide` | native Tailwind binary |
+| `esbuild` | native esbuild binary |
+| `unrs-resolver` | napi native binding |
+| `inngest-cli` | the Inngest dev server binary |
+
+Approve as needed:
+
+```powershell
+npm install-scripts ls
+npm install-scripts approve <package>
+npm rebuild <package>
+```
+
+**Approving is a judgement, not a formality.** A postinstall script runs arbitrary code on your machine at install time, which is why the policy exists. Approve packages you recognise and whose postinstall has an obvious job; leave the rest blocked until something actually breaks.
+
+`@clerk/shared` and `protobufjs` remain blocked deliberately — nothing has complained.
+
+**Watch out for the npx cache.** `npx <tool>` caches a copy; if the binary download was blocked, re-running npx happily reuses the broken copy forever. Installing the tool as a devDependency avoids the cache entirely, which is why `inngest-cli` is now in `devDependencies` rather than invoked through npx.
+
+This is the same family as the entry in solarity's `patterns.md`: *"`--no-save` protects `package.json`, not `node_modules`… the failure appears days later as a tool that will not start."*
+
+---
+
 ## On replacing Inngest with LangGraph
 
 **Not yet. And probably not as a replacement.**

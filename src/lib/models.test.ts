@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CANDIDATES,
+  DEFAULT_PROVIDER,
   describeModels,
   envKeyFor,
   getModelId,
   getProvider,
+  providerForKey,
   recommendedFor,
 } from "./models";
 
@@ -28,24 +30,54 @@ afterEach(() => {
 });
 
 describe("getProvider", () => {
-  it("defaults to openai when nothing is set", () => {
+  it("defaults to anthropic when nothing is set", () => {
     delete process.env.VIBE_MODEL_PROVIDER;
-    expect(getProvider()).toBe("openai");
+    expect(getProvider()).toBe(DEFAULT_PROVIDER);
+    expect(getProvider()).toBe("anthropic");
   });
 
   it("reads VIBE_MODEL_PROVIDER", () => {
-    process.env.VIBE_MODEL_PROVIDER = "anthropic";
-    expect(getProvider()).toBe("anthropic");
+    process.env.VIBE_MODEL_PROVIDER = "openai";
+    expect(getProvider()).toBe("openai");
   });
 
   it("falls back rather than throwing on an unknown provider", () => {
     process.env.VIBE_MODEL_PROVIDER = "notaprovider";
-    expect(getProvider()).toBe("openai");
+    expect(getProvider()).toBe(DEFAULT_PROVIDER);
   });
 
   it("lets an explicit argument win over the environment", () => {
-    process.env.VIBE_MODEL_PROVIDER = "openai";
-    expect(getProvider("anthropic")).toBe("anthropic");
+    process.env.VIBE_MODEL_PROVIDER = "anthropic";
+    expect(getProvider("openai")).toBe("openai");
+  });
+});
+
+describe("providerForKey", () => {
+  // Regression guard for the failure mode introduced by changing the
+  // default provider: a pasted OpenAI key sent to Anthropic returns a 401
+  // that says nothing about providers.
+  it("recognises an Anthropic key by its longer prefix", () => {
+    expect(providerForKey("sk-ant-api03-" + "x".repeat(40))).toBe("anthropic");
+  });
+
+  it("recognises an OpenAI key", () => {
+    expect(providerForKey("sk-proj-" + "x".repeat(40))).toBe("openai");
+  });
+
+  it("checks the anthropic prefix before the openai one", () => {
+    // Both start with `sk-`. Order of checks is the whole correctness
+    // argument here, so it gets its own test.
+    const anthropicKey = "sk-ant-" + "x".repeat(40);
+    expect(providerForKey(anthropicKey)).not.toBe("openai");
+  });
+
+  it("returns undefined rather than guessing at something unrecognised", () => {
+    expect(providerForKey("not-a-key")).toBeUndefined();
+    expect(providerForKey("")).toBeUndefined();
+  });
+
+  it("tolerates surrounding whitespace from a paste", () => {
+    expect(providerForKey("  sk-ant-" + "x".repeat(40) + "  ")).toBe("anthropic");
   });
 });
 

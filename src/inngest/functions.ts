@@ -5,8 +5,13 @@ import { getSandbox, lastAssistantTextMessageContent, parseAgentOutput } from ".
 import { z } from "zod";
 import { PROMPT, FRAGMENT_TITLE_PROMPT, RESPONSE_PROMPT } from "@/prompt";
 import { prisma } from "@/lib/db";
-import { getProvider, modelFor } from "@/lib/models";
+import { getModelId, getProvider, modelFor, providerForKey } from "@/lib/models";
+import { finishRun, startRun } from "@/lib/runs";
+import { runBuildCheck } from "./build-check";
+import { infrastructureFault, markFault } from "@/lib/faults";
+import { CONFIG_VERSION, truncateForModel } from "@/lib/interventions";
 import {
+  KILL_SANDBOX_AFTER_EVAL,
   MAX_AGENT_ITERATIONS,
   MESSAGE_HISTORY_DEPTH,
   SANDBOX_TEMPLATE,
@@ -16,6 +21,15 @@ import {
 interface AgentState {
   summary: string;
   files: {[path: string]: string};
+  /**
+   * Whatever the agent said last, captured on every response.
+   *
+   * Recorded here rather than reconstructed afterwards because this is the
+   * only place the correct shape is available: the lifecycle hook receives
+   * an AgentResult, while `network.run` returns a NetworkRun with no
+   * `.output` at all.
+   */
+  lastMessage?: string;
 }
 
 export const codeAgentFunction = inngest.createFunction(
@@ -25,7 +39,33 @@ export const codeAgentFunction = inngest.createFunction(
     // A user-supplied key, when present, overrides the environment for this run.
     // modelFor() throws with a readable message when neither is available.
     const apiKey: string | undefined = event.data.apiKey;
-    const provider = getProvider(event.data.provider);
+
+    // A user-supplied key decides its own provider. The configured default
+    // is Anthropic, so without this a pasted OpenAI key would be sent to
+    // Anthropic and fail with a 401 that never mentions providers.
+    // Explicit event data still wins, for deliberate overrides.
+    const provider =
+      event.data.provider
+        ? getProvider(event.data.provider)
+        : (apiKey && providerForKey(apiKey)) || getProvider();
+
+    // Opened before any work starts, so a run that dies mid-flight still
+    // leaves a row behind. Inside step.run so an Inngest retry reuses the
+    // same id instead of opening a second run for the same request.
+    const runSource: "USER" | "EVAL" =
+      event.data.source === "EVAL" ? "EVAL" : "USER";
+
+    const runId = await step.run("record-run-start", async () =>
+      startRun({
+        projectId: event.data.projectId,
+        prompt: event.data.value,
+        provider,
+        model: getModelId("coder", provider),
+        source: runSource,
+        caseId: typeof event.data.caseId === "string" ? event.data.caseId : undefined,
+        configVersion: CONFIG_VERSION,
+      }),
+    );
 
     const sandboxId = await step.run("get-sandbox-id", async () => {
       const sandbox = await Sandbox.create(SANDBOX_TEMPLATE);
@@ -61,6 +101,7 @@ export const codeAgentFunction = inngest.createFunction(
       {
         summary: "",
         files: {},
+        lastMessage: undefined,
       },
       {
         messages: previousMessages
@@ -93,12 +134,17 @@ export const codeAgentFunction = inngest.createFunction(
                     buffers.stderr += data;
                   }
                 });
-                return result.stdout;
+                // Truncated: full stdout from something like `npm install`
+                // is tens of kilobytes, and it stays in the conversation
+                // for every remaining iteration. See lib/interventions.ts.
+                return truncateForModel(result.stdout);
               } catch (e) {
                 console.error(
                   `Command failed: ${e} \nstdout: ${buffers.stdout} \nstderr: ${buffers.stderr}`
                 );
-                return `Command failed: ${e} \nstdout: ${buffers.stdout} \nstderr: ${buffers.stderr}`
+                return truncateForModel(
+                  `Command failed: ${e} \nstdout: ${buffers.stdout} \nstderr: ${buffers.stderr}`,
+                )
               }
             });
           },
@@ -114,28 +160,59 @@ export const codeAgentFunction = inngest.createFunction(
               }),
             ),
           }),
+          /**
+           * This handler previously reported a write failure by returning
+           * the string `"Error " + e`, then checked `typeof === "object"`
+           * before updating state. So a failed write silently left the file
+           * map empty, and the handler returned undefined either way — the
+           * model got no tool result at all and carried on as if it had
+           * worked.
+           *
+           * That produced the exact observed failure: the agent writes a
+           * confident `<task_summary>` describing files it believes it
+           * created, while `fileCount` is zero and nothing says why.
+           *
+           * Errors are now returned to the model as text, so it can react,
+           * and state is only updated on an actual success.
+           */
           handler: async (
-            { files }, 
+            { files },
             { step, network }: Tool.Options<AgentState>
           ) => {
-            const newFiles = await step?.run("createOrUpdateFiles", async () => {
+            const outcome = await step?.run("createOrUpdateFiles", async () => {
               try {
-                const updatedFiles = network.state.data.files || {};
+                const updatedFiles = { ...(network.state.data.files ?? {}) };
                 const sandbox = await getSandbox(sandboxId);
+
                 for (const file of files) {
                   await sandbox.files.write(file.path, file.content);
                   updatedFiles[file.path] = file.content;
                 }
 
-                return updatedFiles;
+                return { ok: true as const, files: updatedFiles };
               } catch (e) {
-                return "Error " + e;
+                return {
+                  ok: false as const,
+                  error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+                };
               }
             });
 
-            if (typeof newFiles === "object") {
-              network.state.data.files = newFiles;
+            // `step` is optional in the tool signature. If it is ever
+            // absent the write never happened, and saying so beats
+            // returning undefined and looking like success.
+            if (!outcome) {
+              return "No step context available; nothing was written.";
             }
+
+            if (!outcome.ok) {
+              return `Failed to write files: ${outcome.error}`;
+            }
+
+            network.state.data.files = outcome.files;
+
+            const written = Object.keys(outcome.files).length;
+            return `Wrote ${files.length} file(s). ${written} file(s) now in the project.`;
           }
         }),
         createTool({
@@ -153,7 +230,9 @@ export const codeAgentFunction = inngest.createFunction(
                   const content = await sandbox.files.read(file);
                   contents.push({ path: file, content });
                 }
-                return JSON.stringify(contents);
+                // Every requested file's full contents used to go back to
+                // the model and stay in context for the rest of the run.
+                return truncateForModel(JSON.stringify(contents));
               } catch (e) {
                 return "Error " + e;
               }
@@ -166,6 +245,10 @@ export const codeAgentFunction = inngest.createFunction(
           const lastAssistantTextMessage = lastAssistantTextMessageContent(result);
 
           if (lastAssistantTextMessage && network) {
+            // Kept on every response, not only on success. When a run ends
+            // with no files, this is the only record of why.
+            network.state.data.lastMessage = lastAssistantTextMessage;
+
             if (lastAssistantTextMessage.includes("<task_summary>")) {
               network.state.data.summary = lastAssistantTextMessage;
             }
@@ -191,7 +274,121 @@ export const codeAgentFunction = inngest.createFunction(
       },
     })
 
-    const result = await network.run(event.data.value, { state });
+    /**
+     * A failed generation used to leave nothing behind but a file count of
+     * zero. `network.run` was unguarded, tool errors were swallowed into
+     * strings, and the only record was "FAILED, 0 files" — which cannot
+     * distinguish a model that refused, a tool that threw, and an
+     * iteration cap reached in silence.
+     *
+     * Observe is stage one of the loop in docs/PLAN.md. A failure that
+     * records no reason is the instrumentation not doing its job.
+     */
+    let result: Awaited<ReturnType<typeof network.run>> | null = null;
+    let runError: string | null = null;
+
+    try {
+      result = await network.run(event.data.value, { state });
+    } catch (error) {
+      /**
+       * Serialise everything the error carries, not just name and message.
+       *
+       * Twenty-five runs failed with `AIGatewayError: unsuccessful status
+       * code: 400` and that string was the entire record. It names the
+       * status and nothing about the cause — context length, a malformed
+       * request, a quota, a rejected tool schema all look identical.
+       *
+       * Providers put the reason in the response body. Errors carry it on
+       * non-enumerable properties that `${error}` drops silently, which is
+       * why three rounds of diagnosis have had nothing to work with.
+       */
+      const describe = (value: unknown): string => {
+        if (!(value instanceof Error)) return String(value);
+
+        const extras: Record<string, unknown> = {};
+        for (const key of Object.getOwnPropertyNames(value)) {
+          if (key === "stack") continue;
+          const property = (value as unknown as Record<string, unknown>)[key];
+          if (typeof property === "function") continue;
+          extras[key] = property;
+        }
+
+        // `cause` is where SDKs usually hang the underlying HTTP error.
+        const cause = (value as { cause?: unknown }).cause;
+        if (cause) extras.cause = describe(cause);
+
+        let serialised: string;
+        try {
+          serialised = JSON.stringify(extras).slice(0, 4_000);
+        } catch {
+          serialised = "(error properties not serialisable)";
+        }
+
+        return `${value.name}: ${value.message}\n${serialised}`;
+      };
+
+      const detail = describe(error);
+
+      // A 429 is not the agent writing bad code. Without this it lands in
+      // the Run table looking identical to a genuine failure, and a
+      // rate-limited batch reads as a collapse in quality.
+      const fault = infrastructureFault(detail);
+      runError = fault ? markFault(fault, detail) : detail;
+    }
+
+    // Captured by the lifecycle hook during the run, where the shape is
+    // right. An earlier version called lastAssistantTextMessageContent on
+    // the network result here, which has no `.output` — a TypeError inside
+    // the very code meant to explain failures.
+    const lastAgentMessage = result?.state?.data?.lastMessage ?? null;
+
+    if (!result) {
+      // Release the sandbox on the failure path too.
+      //
+      // This branch used to return without it, so every failed run leaked a
+      // sandbox for the full thirty-minute timeout. A batch where all 24
+      // cases failed therefore held 24 sandboxes against E2B's ~20
+      // concurrent cap — which then rate-limited the *next* batch, making a
+      // four-case smoke run fail for reasons created an hour earlier.
+      //
+      // Cleanup that only runs on the happy path is the one shape that
+      // guarantees the mess accumulates exactly when things are going
+      // badly.
+      if (runSource === "EVAL" && KILL_SANDBOX_AFTER_EVAL) {
+        await step.run("release-sandbox-after-error", async () => {
+          try {
+            const sandbox = await getSandbox(sandboxId);
+            await sandbox.kill();
+            return { killed: true };
+          } catch (killError) {
+            return { killed: false, error: String(killError) };
+          }
+        });
+      }
+
+      await step.run("record-run-error", async () =>
+        finishRun({
+          runId,
+          status: "FAILED",
+          fileCount: 0,
+          hasSummary: false,
+          errorMessage: runError ?? "network.run returned nothing",
+        }),
+      );
+
+      await step.run("save-error-message", async () =>
+        prisma.message.create({
+          data: {
+            projectId: event.data.projectId,
+            content: "Something went wrong. Please try again.",
+            role: "ASSISTANT",
+            type: "ERROR",
+          },
+        }),
+      );
+
+      return { error: runError };
+    }
 
     // Helper agents reuse the run's provider and key.
     const fragmentTitleGenerator = createAgent({
@@ -216,8 +413,14 @@ export const codeAgentFunction = inngest.createFunction(
         responseGenerator.run(result.state.data.summary),
       ]);
 
-    const isError = !result.state.data.summary ||
-    Object.keys(result.state.data.files || {}).length === 0;
+    const fileCount = Object.keys(result.state.data.files || {}).length;
+    const hasSummary = Boolean(result.state.data.summary);
+
+    // The existing success heuristic: "the agent said something and wrote a
+    // file". Slice 2 replaces this with an actual build result. It is kept
+    // on the Run row so the two can be compared — how often this said
+    // success while the code did not compile is itself a finding.
+    const isError = !hasSummary || fileCount === 0;
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
       const sandbox = await getSandbox(sandboxId);
@@ -253,11 +456,57 @@ export const codeAgentFunction = inngest.createFunction(
       })
     })
 
-    return { 
+    // Deliberately after save-result. The user already has their fragment by
+    // now, so the build check costs them nothing — it runs on the sandbox
+    // while they read the output. Measurement should not make the product
+    // slower, or it will eventually be switched off.
+    const checks = await step.run("build-check", async () =>
+      runBuildCheck(sandboxId, fileCount, runSource),
+    );
+
+    // Eval sandboxes are released as soon as they have been measured.
+    // Nobody is looking at an eval preview, and E2B caps concurrent
+    // sandboxes at about 20 — a batch that leaves them alive for the full
+    // thirty-minute timeout starves itself before it finishes.
+    if (runSource === "EVAL" && KILL_SANDBOX_AFTER_EVAL) {
+      await step.run("release-sandbox", async () => {
+        try {
+          const sandbox = await getSandbox(sandboxId);
+          await sandbox.kill();
+          return { killed: true };
+        } catch (error) {
+          // Never fail a run over cleanup. A sandbox that outlives its
+          // welcome costs quota; a thrown error here costs the measurement.
+          return { killed: false, error: String(error) };
+        }
+      });
+    }
+
+    await step.run("record-run-finish", async () =>
+      finishRun({
+        runId,
+        status: isError ? "FAILED" : "COMPLETED",
+        fileCount,
+        hasSummary,
+        // On failure, keep what the agent actually said. "0 files" is a
+        // symptom; the last message is usually the cause.
+        errorMessage: isError
+          ? [
+              `summary: ${hasSummary}, files: ${fileCount}`,
+              lastAgentMessage ? `last message: ${lastAgentMessage.slice(0, 2000)}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : undefined,
+        checks,
+      }),
+    );
+
+    return {
       url: sandboxUrl,
       title: "Fragment",
       files: result.state.data.files,
-      summary: result.state.data.summary, 
+      summary: result.state.data.summary,
     };
   },
 );

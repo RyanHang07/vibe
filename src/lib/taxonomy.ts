@@ -1,0 +1,240 @@
+/**
+ * Naming failure shapes.
+ *
+ * Slice 5 of docs/PLAN.md. The goal is to turn "27 runs failed" into
+ * "27 failures in 6 shapes, and shape 3 is new this week".
+ *
+ *
+ * WHY NOT EMBEDDINGS AND CLUSTERING
+ *
+ * The plan assumed the usual approach: embed each failure, cluster the
+ * vectors, label the clusters with a model. That is the right tool for
+ * free-form text, and it carries one genuinely hard problem — cluster
+ * identity across runs. Today's clustering splits yesterday's shape in two,
+ * or merges three into one, and every ID that referred to them stops
+ * meaning anything. "Shape 3 is getting worse" becomes unanswerable.
+ *
+ * Compiler output is not free-form. TypeScript errors carry a code and a
+ * templated message; Next's build errors follow a small number of fixed
+ * forms. A signature can be extracted **deterministically** — and then the
+ * signature *is* the identity. No drift, no re-matching, no relabelling,
+ * and the same failure produces the same shape today and in six months.
+ *
+ * That trade is worth taking wherever the input has structure. Embeddings
+ * remain the answer for the unstructured tail — agent refusals, prose
+ * explanations — and `UNCLASSIFIED` below is deliberately the hook for it.
+ *
+ *
+ * WHAT MAKES A GOOD SIGNATURE
+ *
+ * Stable across runs that fail the same way, distinct across runs that
+ * fail differently. So the normaliser strips everything incidental —
+ * paths, line numbers, identifier names, hashes — and keeps the shape of
+ * the complaint.
+ *
+ *   app/page.tsx(4,7): error TS2322: Type 'string' is not assignable
+ *   components/card.tsx(19,3): error TS2322: Type 'number' is not assignable
+ *
+ * are one shape, not two.
+ */
+
+export type FailureShape = {
+  /** Stable, human-readable identity. Never a hash — these get read. */
+  signature: string;
+  /** Which check produced it. */
+  source: "typecheck" | "bundle" | "agent";
+  /** The line the signature was derived from, for spot-checking. */
+  evidence: string;
+};
+
+export const UNCLASSIFIED = "unclassified";
+
+/**
+ * Strip the parts that vary between two instances of the same failure.
+ *
+ * Order matters: paths before line numbers, quoted strings before bare
+ * numbers, or the earlier rules eat text the later ones needed.
+ */
+export const normalise = (line: string): string =>
+  line
+    .trim()
+    // Absolute and relative paths, with or without a (line,col) suffix.
+    .replace(/(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)+\.\w+(?:\(\d+,\d+\))?/g, "<path>")
+    // Bare (line,col) or :line:col.
+    .replace(/\(\d+,\d+\)|:\d+:\d+/g, "<loc>")
+    // Quoted identifiers and types — the part that differs case to case.
+    .replace(/'[^']*'|"[^"]*"|`[^`]*`/g, "<name>")
+    // Content hashes and long hex runs.
+    .replace(/\b[0-9a-f]{8,}\b/gi, "<hash>")
+    // Remaining standalone numbers.
+    .replace(/\b\d+\b/g, "<n>")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** TypeScript diagnostics: `error TS2322: Type 'x' is not assignable…` */
+const typescriptShape = (text: string): FailureShape | null => {
+  const match = text.match(/error (TS\d+):\s*([^\n]+)/);
+  if (!match) return null;
+
+  const [, code, message] = match;
+  return {
+    signature: `${code}: ${normalise(message)}`,
+    source: "typecheck",
+    evidence: match[0].trim(),
+  };
+};
+
+/**
+ * Next build failures, in the handful of forms it actually emits.
+ *
+ * Ordered most specific first. `Module not found` and `Failed to compile`
+ * often appear in the same output, and the first is the useful one.
+ */
+const NEXT_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  { pattern: /Module not found:\s*([^\n]+)/, label: "Module not found" },
+  { pattern: /(You're importing a component that needs[^\n]+)/, label: "Server/client boundary" },
+  { pattern: /(Error: .*?use client[^\n]*)/, label: "Server/client boundary" },
+  { pattern: /(ReferenceError: [^\n]+)/, label: "ReferenceError" },
+  { pattern: /(SyntaxError: [^\n]+)/, label: "SyntaxError" },
+  { pattern: /(TypeError: [^\n]+)/, label: "TypeError" },
+  { pattern: /Export .* doesn't exist in target module/, label: "Bad export" },
+  { pattern: /(Cannot find module [^\n]+)/, label: "Cannot find module" },
+];
+
+const bundleShape = (text: string): FailureShape | null => {
+  for (const { pattern, label } of NEXT_PATTERNS) {
+    const match = text.match(pattern);
+    if (!match) continue;
+
+    const detail = match[1] ?? match[0];
+    return {
+      signature: `${label}: ${normalise(detail)}`,
+      source: "bundle",
+      evidence: match[0].trim().slice(0, 300),
+    };
+  }
+  return null;
+};
+
+/**
+ * Model-provider rejections.
+ *
+ * Deliberately classified as agent failures, not infrastructure faults.
+ *
+ * A 429 is throttling and says nothing about the run. A 400 is different:
+ * the request was malformed or too large, and the most likely cause is the
+ * agent looping until it exhausted the context window. That is a real
+ * failure mode of the agent, and burying it in the infrastructure bucket
+ * would hide it.
+ *
+ * Observed concentrated in the adversarial tier — four of five cases —
+ * which is exactly where an agent flailing against an impossible request
+ * would blow its context.
+ */
+const providerShape = (text: string): FailureShape | null => {
+  if (/context.{0,20}(length|window)|too many tokens|maximum context/i.test(text)) {
+    return {
+      signature: "Provider rejected: context exhausted",
+      source: "agent",
+      evidence: text.trim().slice(0, 300),
+    };
+  }
+
+  const status = text.match(/unsuccessful status code:?\s*(\d{3})/i)?.[1];
+  if (status && status.startsWith("4")) {
+    return {
+      // Kept distinct from the context case: same symptom, different cause,
+      // and merging them would make the common one invisible.
+      signature: `Provider rejected request (${status})`,
+      source: "agent",
+      evidence: text.trim().slice(0, 300),
+    };
+  }
+
+  if (/AIGatewayError|AI request failed/i.test(text)) {
+    return {
+      signature: "Provider request failed",
+      source: "agent",
+      evidence: text.trim().slice(0, 300),
+    };
+  }
+
+  return null;
+};
+
+/** Agent failures: produced nothing, or said why it could not. */
+const agentShape = (text: string): FailureShape | null => {
+  if (/summary: false/.test(text)) {
+    return {
+      signature: "Agent produced no summary",
+      source: "agent",
+      evidence: "no <task_summary> emitted",
+    };
+  }
+
+  if (/files: 0/.test(text)) {
+    return {
+      signature: "Agent wrote no files",
+      source: "agent",
+      evidence: "fileCount 0",
+    };
+  }
+
+  return null;
+};
+
+/**
+ * Derive the shape of a failure.
+ *
+ * Returns UNCLASSIFIED rather than guessing. A bucket that absorbs
+ * everything it does not understand would report a tidy taxonomy that
+ * quietly hides the failures nobody has looked at yet — and those are the
+ * interesting ones.
+ */
+export const classify = (text: string | null | undefined): FailureShape => {
+  if (!text || !text.trim()) {
+    return { signature: UNCLASSIFIED, source: "agent", evidence: "(no output)" };
+  }
+
+  return (
+    typescriptShape(text) ??
+    bundleShape(text) ??
+    // Before agentShape: a provider rejection also leaves files at 0, and
+    // "wrote no files" would swallow the more specific cause.
+    providerShape(text) ??
+    agentShape(text) ?? {
+      signature: UNCLASSIFIED,
+      source: "agent",
+      // Keep the tail: the summary line is at the end.
+      evidence: text.trim().split("\n").slice(-3).join(" ").slice(0, 300),
+    }
+  );
+};
+
+/** Every distinct shape in a set of failures, most frequent first. */
+export const tally = (
+  failures: ReadonlyArray<{ id: string; text: string | null }>,
+): Array<{ shape: FailureShape; count: number; runIds: string[] }> => {
+  const groups = new Map<
+    string,
+    { shape: FailureShape; count: number; runIds: string[] }
+  >();
+
+  for (const failure of failures) {
+    const shape = classify(failure.text);
+    const existing = groups.get(shape.signature);
+
+    if (existing) {
+      existing.count += 1;
+      existing.runIds.push(failure.id);
+    } else {
+      groups.set(shape.signature, {
+        shape,
+        count: 1,
+        runIds: [failure.id],
+      });
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => b.count - a.count);
+};

@@ -132,10 +132,32 @@ export const recommendedFor = (
 const isProvider = (value: string | undefined): value is Provider =>
   value === "openai" || value === "anthropic";
 
+/** Used when nothing else says otherwise. */
+export const DEFAULT_PROVIDER: Provider = "anthropic";
+
 /** Provider for the whole run. Per-role override is deliberately not supported yet. */
 export const getProvider = (override?: string): Provider => {
   const candidate = override ?? process.env.VIBE_MODEL_PROVIDER;
-  return isProvider(candidate) ? candidate : "openai";
+  return isProvider(candidate) ? candidate : DEFAULT_PROVIDER;
+};
+
+/**
+ * Which provider a user-supplied key belongs to.
+ *
+ * Without this, changing the default provider silently breaks bring-your-own
+ * key: a user pastes an OpenAI key, the run defaults to Anthropic, and the
+ * key is sent to the wrong API. The result is a 401 whose message says
+ * nothing about providers, on a path the user cannot debug.
+ *
+ * Prefix is the only signal available before making a request, and it is
+ * reliable: Anthropic keys begin `sk-ant-`, OpenAI keys begin `sk-` and
+ * do not. Returns undefined for anything unrecognised rather than guessing.
+ */
+export const providerForKey = (apiKey: string): Provider | undefined => {
+  const trimmed = apiKey.trim();
+  if (trimmed.startsWith("sk-ant-")) return "anthropic";
+  if (trimmed.startsWith("sk-")) return "openai";
+  return undefined;
 };
 
 const ROLE_ENV: Record<ModelRole, string> = {

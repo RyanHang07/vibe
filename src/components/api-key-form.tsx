@@ -25,7 +25,11 @@ export type ApiKeyInputProps = {
   className?: string;
 };
 
-/** OpenAI keys start with `sk-`. Length is a weak check but catches truncation. */
+/**
+ * Both providers use `sk-` prefixes; Anthropic's is `sk-ant-`. Length is a
+ * weak check but catches truncated pastes, which is the common mistake.
+ * Which provider the key belongs to is decided by `providerForKey`.
+ */
 export const looksLikeKey = (value: string): boolean =>
   value.startsWith("sk-") && value.length >= 48;
 
@@ -67,8 +71,10 @@ export function ApiKeyInput({
         className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground"
       >
         <Key className="size-4" aria-hidden />
-        OpenAI API key
-        <span className="text-xs font-normal">(optional)</span>
+        API key
+        <span className="text-xs font-normal">
+          (optional &middot; OpenAI or Anthropic)
+        </span>
       </label>
 
       <div
@@ -126,8 +132,8 @@ export function ApiKeyInput({
       >
         {isValid === false && (
           <span className="text-destructive">
-            That doesn&apos;t look like an OpenAI key. They begin with{" "}
-            <code className="font-mono">sk-</code>.
+            That doesn&apos;t look like an API key. Both providers&apos; keys
+            begin with <code className="font-mono">sk-</code>.
           </span>
         )}
         {isValid === true && (
