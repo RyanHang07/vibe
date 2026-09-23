@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { useTheme } from "next-themes";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import {
@@ -36,26 +35,38 @@ export const ProjectHeader = ({ projectId }: Props) => {
     const {setTheme, theme} = useTheme();
 
     return (
-        <header className="p-2 flex justify-between items-center border-b">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b px-3">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button 
+                    <Button
                         variant="ghost"
                         size="sm"
-                        className="focus-visible:ring-0 hover:bg-transparent hover:opacity-75 transition-opacity pl-2!"
+                        className="gap-x-2 pl-2! transition-opacity hover:bg-transparent hover:opacity-75 focus-visible:ring-0"
                     >
-                        <Image src="/logo.svg" alt="logo" width={18} height={18} />
-                        <span className="text-sm font-medium">{project?.name}</span>
-                        <ChevronDownIcon className="size-4 ml-2" />
+                        {/*
+                          The wordmark, not the tutorial's logo glyph — the
+                          same identity the navbar uses. `min-w-0` + truncate
+                          so a long project name shortens instead of pushing
+                          the chevron out of the header.
+                        */}
+                        <span className="font-sans text-sm font-bold tracking-tight">
+                            datum<span className="text-primary">.</span>
+                        </span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="min-w-0 truncate text-sm font-medium">
+                            {project?.name}
+                        </span>
+                        <ChevronDownIcon className="size-4 shrink-0 opacity-60" />
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="bottom" align="start">
                     <DropdownMenuItem asChild>
                         <Link href="/">
-                        <ChevronLeftIcon />
-                            <span>
-                                Go To Dashboard
-                            </span>
+                            <ChevronLeftIcon />
+                            {/* "Dashboard" was the tutorial's word for it.
+                                There is no dashboard; there is a home page
+                                with an input on it. */}
+                            <span>Back to Datum</span>
                         </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />

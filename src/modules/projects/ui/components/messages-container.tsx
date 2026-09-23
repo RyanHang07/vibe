@@ -61,7 +61,7 @@ export const MessagesContainer = ({
                             type={message.type}
                         />
                     ))}
-                    {isLastMessageUser && <MessageLoading />}
+                    {isLastMessageUser && <MessageLoading projectId={projectId} />}
                     <div ref={bottomRef}/>
                 </div>
             </div>

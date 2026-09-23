@@ -16,7 +16,7 @@
 
 import { prisma } from "../src/lib/db";
 import { isMarkedFault } from "../src/lib/faults";
-import { classify, tally, UNCLASSIFIED } from "../src/lib/taxonomy";
+import { tally, UNCLASSIFIED } from "../src/lib/taxonomy";
 
 const bare = (token: string) => token.replace(/^-+/, "");
 

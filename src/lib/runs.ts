@@ -55,6 +55,54 @@ export const startRun = async ({
   return run.id;
 };
 
+/**
+ * The stages a run passes through, in order.
+ *
+ * Named here rather than as string literals at each call site, so the set
+ * the agent writes and the set the UI renders cannot drift apart — a stage
+ * written but never displayed would look like the run hanging.
+ */
+export const RUN_STAGES = [
+  "sandbox",
+  "generating",
+  "typecheck",
+  "bundle",
+  "done",
+] as const;
+
+export type RunStage = (typeof RUN_STAGES)[number];
+
+export const STAGE_LABELS: Record<RunStage, string> = {
+  sandbox: "Starting a sandbox",
+  generating: "Generating code",
+  typecheck: "Type-checking",
+  bundle: "Bundling",
+  done: "Done",
+};
+
+/**
+ * Record which stage a run has reached.
+ *
+ * Deliberately swallows its own failures. This is progress reporting, not
+ * measurement: a write that fails here should not take down a run that is
+ * otherwise working, and the verdict columns — the ones the whole project
+ * exists to get right — are written elsewhere and are not affected.
+ *
+ * The cost of that choice is that a missed write shows a stale stage. The
+ * alternative is losing the generation because a status label failed to
+ * save, which is a much worse trade.
+ */
+export const markStage = async (
+  runId: string,
+  stage: RunStage,
+): Promise<void> => {
+  try {
+    await prisma.run.update({ where: { id: runId }, data: { stage } });
+  } catch {
+    /* Progress reporting is not worth failing a run over. */
+  }
+};
+
 export type FinishRunInput = {
   runId: string;
   status: "COMPLETED" | "FAILED";

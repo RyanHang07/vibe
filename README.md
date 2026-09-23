@@ -1,120 +1,167 @@
-# Vibe
+# Datum
 
-An AI code-generation app, and a harness that measures whether its output is any good.
-
-The generator takes a natural-language prompt and produces a working Next.js
-app in a sandbox. That part is ordinary. The part worth reading is everything
-around it: **every generation is recorded, type-checked, built, classified,
-and compared against previous configurations.**
-
-Most work on coding agents reports demos. This reports rates, with intervals
-around them, and refuses to publish a number it cannot defend.
+**A measurement harness that happens to be attached to a code-generation agent.**
 
 ---
 
-## The measurement layer
+## A clean number
 
-### Two signals, kept apart
+Eighty runs against twenty-four graded tasks, scored by whether the
+generated project typechecks and bundles:
 
-| Check | Command | Catches |
+```
+typecheck      72/80  =  90.0%  [81.5%, 94.8%]
+bundle         74/80  =  92.5%  [84.6%, 96.5%]
+
+by difficulty
+  trivial      14/14  = 100.0%
+  simple       17/18  =  94.4%
+  moderate     18/20  =  90.0%
+  complex      14/15  =  93.3%
+  adversarial  11/13  =  84.6%
+```
+
+Wilson intervals rather than bare percentages. A monotonic slide from
+trivial to adversarial. Two independent signals agreeing within two and a
+half points. Zero runs unjudged.
+
+I would have published it.
+
+Then the failure taxonomy over the same eighty runs found that seven of the
+twenty-six code failures were `tailwind-merge` missing from the sandbox
+template, and lucide brand icons removed at a version nothing recorded — an
+unpinned `npm install` in a Dockerfile, sitting beneath a comment reading
+*"EVERY VERSION HERE IS PINNED."*
+
+**Twenty-seven percent of the failure set was about the measuring
+apparatus.** The adversarial tier's 84.6% — the lowest bar on the chart, the
+one that makes the gradient look real — was substantially lucide drift.
+
+The number was clean, tightly bracketed, consistent across difficulty tiers,
+and partly about a missing package.
+
+**It was the seventh time.** [`docs/WRITEUP.md`](docs/WRITEUP.md) has the
+other six, including the one that would have reported 0% typecheck across
+sixteen runs because Next 16's generated types live in a directory the
+sandbox copy excluded.
+
+---
+
+## The idea
+
+Not "measure an agent". **Refusing to record one thing as another.**
+
+- `null` is not `false` — "could not be judged" is not "failed"
+- an infrastructure fault is not a code failure
+- a rate limit is not a bad generation
+- types failing is not bundling failing
+- "module not found" is not "export not found" — one is the template's fault,
+  the other is the agent inventing a name
+- **"the agent said it worked" is not "it works"**
+
+That last one is the finding the project exists to produce:
+
+```
+the old signal said 72/80 succeeded
+of those, 6 did not compile   6/72 = 8.3%  [3.9%, 17.0%]
+```
+
+The app reported success to the user on roughly one in twelve runs whose
+code does not compile. Before this existed, "did the agent emit a summary"
+*was* the success metric.
+
+---
+
+## Four layers, cheapest first
+
+**Never let an expensive test answer a cheap question.**
+
+| Layer | Cost | Answers |
 |---|---|---|
-| typecheck | `tsc --noEmit` | wrong props, missing imports, invented APIs |
-| bundle | `next build` | syntax, client/server boundary violations, unresolvable imports |
+| `npm run verify` | free, seconds | Do the commands and parsers hold their contracts? |
+| `npm run doctor` | 1 sandbox, **0 tokens** | Do the checks work on a pristine template? |
+| `npm run eval smoke` | 4 generations | Does the agent path work end to end? |
+| `npm run eval` | 24 generations | What is the rate? |
 
-`"62% of generations build"` says less than `"88% typecheck, 71% bundle"`,
-because the second says where to intervene.
+Every harness bug found so far — nine of nine — was a property of the check
+commands or the template, needed zero model calls to find, and was paid for
+at eval prices anyway. `doctor` exists to separate *"is the instrument
+correct"* from *"is the thing good"*, because only one of them costs money.
 
-### Outcomes that are not failures
+It is still not sufficient: `doctor` was green while `tailwind-merge` was
+missing, because a pristine scaffold never imports it. So it now asserts a
+named package set and prints installed versions, pass or fail.
 
-Every check returns one of three things, never two:
+---
 
-- **pass** — the code works
-- **fail** — the code does not work
-- **unknown** — the check could not decide
+## Checking whether the experiment can resolve anything
 
-A timeout, a dead sandbox, a rate limit, a filesystem permission error and a
-provider outage all produce `unknown`. They are excluded from every rate
-rather than counted against the agent.
-
-This is load-bearing. On one batch, eighteen runs failed on a `tar`
-permissions error inside the sandbox image. Scored as failures, that batch
-would have reported roughly 10% build success — a plausible, publishable,
-entirely false result about a Docker whiteout file.
-
-### Rates with honest intervals
+Before spending on a comparison, not after:
 
 ```
-  typecheck      10/10  = 100.0%  [72.2%, 100.0%]
-  bundle         12/13  =  92.3%  [66.7%, 98.6%]
-
-  interval width  31.9 points
-  a ±10 point interval needs about 97 runs; this batch has 13.
+npm run power version=v5-pinned-truncate-4000
 ```
 
-Wilson score intervals, not the textbook `p ± z·√(p(1-p)/n)` — which returns
-`0% ± 0` at zero successes, claiming certainty from twenty observations. The
-adversarial tier is built to score zero, so that is the common case here.
-
-The report also states what the sample **cannot** resolve, which is usually
-more useful than the number itself.
-
-### Failure shapes, derived deterministically
-
 ```
- 1. TS2322: Type <name> is not assignable to type <name>
-    7 run(s) · typecheck · complex-02, moderate-04, simple-03
- 2. Module not found: Can't resolve <name>
-    4 run(s) · bundle · moderate-01, moderate-04
+where the spread comes from
+  between cases   53.1s   sd of case means
+  within a case   14.2s   sd of repeats
+  ignoring cases  44.2s
+
+smallest detectable change, 24 runs per arm
+  unpaired   35.7s    83% of the mean
+  paired     11.5s    27% of the mean
 ```
 
-No embeddings, no clustering. Compiler output is structured, so a signature
-can be extracted by normalising away paths, line numbers, quoted identifiers
-and hashes — and then **the signature is the identity.** The usual hard
-problem of clustering, keeping shape IDs stable as clusters split and merge
-across runs, is designed out rather than solved.
+Almost all the variation is *between* cases — a trivial task takes fifteen
+seconds, an adversarial one takes two minutes. Pooling every run of one
+config against every run of the other puts that in the noise term, even
+though both arms run the identical twenty-four cases. The experiment then
+has to beat the difference between `trivial-01` and `complex-03` before it
+can see anything.
 
-Unclassified failures are never absorbed into a catch-all. A bucket that
-swallows what it does not understand reports a tidy taxonomy and hides the
-failures nobody has looked at.
-
-### Interventions as versioned objects
-
-Every run records the agent configuration that produced it. Changes are
-versioned, one at a time, with the expected effect written down **before**
-the run — predicting afterwards is how a null result becomes a success story.
+Pairing on the case cancels that term and buys roughly five times the
+resolution for the same money.
 
 ```
-npm run baseline version=v2-truncate-tool-output
+npm run compare a=v5-pinned-truncate-4000 b=v6-pinned-truncate-1000
 ```
 
-Mixing configurations in one average produces a number describing nothing
-that ever ran, so the report refuses to do it quietly.
+Reports the typecheck rate **first** — an intervention that speeds the agent
+up by degrading its output is a regression wearing a win — then the paired
+difference with its interval. When that interval includes zero it says
+**NOT RESOLVED** and states the size of what it could not see, because
+"not resolved" is not "no effect".
 
 ---
 
 ## Commands
 
 ```
-npm run eval smoke          # 4 cases, ~6 min — while developing
+npm run verify              # typecheck, lint, contract tests
+npm run doctor              # 1 sandbox, 0 tokens — is the harness sound?
+
+npm run eval smoke          # 4 cases
+npm run eval cheap          # 10 cases, 2 per band
 npm run eval                # 24 cases — a real baseline
-npm run eval case=trivial-01
+
+npm run baseline            # rates with Wilson intervals, per tier, per config
+npm run shapes              # deterministic failure taxonomy
+npm run power               # can this experiment resolve anything?
+npm run compare a=… b=…     # paired comparison of two configurations
 
 npm run report              # run table, failures, timings
 npm run report sweep        # close abandoned runs
 npm run report prune        # drop rows that are not evidence
 
-npm run baseline            # rates with confidence intervals
-npm run shapes              # failure taxonomy
 npm run check:model         # provider bisect + API key provenance
-
-npm run verify              # typecheck, lint, test
 ```
 
 ---
 
 ## The golden set
 
-24 cases across five difficulty bands, with permanent ids. Five are
+24 cases across five difficulty bands with permanent ids. Five are
 **expected to fail** — vague requests, contradictory requirements, a prompt
 injection attempt — because a set everything passes cannot detect a
 regression.
@@ -125,9 +172,25 @@ tells you what broke.
 
 ---
 
+## The app
+
+The agent is off-the-shelf; none of it is the contribution. It takes a
+prompt, builds a Next.js app in an E2B sandbox, and the result is
+type-checked and bundled before the user is told it worked. The **Evidence**
+tab on each project shows every run's verdict beside what the agent claimed,
+with the raw compiler output rather than a summary of it.
+
+**Bring your own key.** This deployment has no provider key of its own, so
+generations run on the user's Anthropic or OpenAI key and are billed to
+their account. The key is encrypted in transit through the job queue
+(`@inngest/middleware-encryption`) and never stored. Plan credits meter
+sandbox usage, which is ours whoever's key ran the model.
+
+---
+
 ## Stack
 
-**App:** Next.js 16, TypeScript, tRPC, Prisma, Postgres, Clerk, Tailwind
+**App:** Next.js 16, TypeScript, tRPC, Prisma, Postgres, Clerk, Tailwind v4
 
 **Agent:** [Inngest AgentKit](https://agentkit.inngest.com) for orchestration,
 [E2B](https://e2b.dev) for sandboxes, Anthropic or OpenAI for generation —
@@ -145,22 +208,29 @@ npx prisma migrate deploy
 npm run dev
 ```
 
-`.env` needs `DATABASE_URL`, `E2B_API_KEY`, `ANTHROPIC_API_KEY` or
-`OPENAI_API_KEY`, and Clerk keys. For local eval runs, `INNGEST_DEV=1` with
-`npm run inngest` alongside `npm run dev`.
+`.env` needs `DATABASE_URL`, `E2B_API_KEY`, `INNGEST_ENCRYPTION_KEY`
+(`openssl rand -base64 32`), and Clerk keys. A provider key is optional — if
+`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is set, the app uses it and the key
+field is marked optional; if not, users supply their own. The form asks the
+server which is true rather than asserting either.
 
-**Note:** `.env` does not override an environment variable that is already
-set — not in Next.js, not in Node's `--env-file`. A stale `ANTHROPIC_API_KEY`
-in your shell or system environment wins silently. `npm run check:model`
-reports which source actually won.
+For local eval runs: `INNGEST_DEV=1` with `npm run inngest` alongside
+`npm run dev`.
+
+> **Note:** `.env` does not override an environment variable that is already
+> set — not in Next.js, not in Node's `--env-file`. A stale
+> `ANTHROPIC_API_KEY` in your shell wins silently, and billing lands on an
+> account you did not expect. `npm run check:model` reports which source won.
 
 ---
 
 ## Documentation
 
-- [`docs/PLAN.md`](docs/PLAN.md) — where this is going, and why each piece exists
+- [`docs/WRITEUP.md`](docs/WRITEUP.md) — *Your eval score moved. That tells you almost nothing.*
+- [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md) — the remaining phases and the order they go in
 - [`docs/STATUS.md`](docs/STATUS.md) — what is built, what is pending
-- [`docs/AUDIT.md`](docs/AUDIT.md) — what was wrong, and what is still open
+- [`docs/AUDIT.md`](docs/AUDIT.md) — what was wrong at the start, and what is still open
+- [`docs/PLAN.md`](docs/PLAN.md) — where this is going, and why each piece exists
 - [`docs/UPGRADE.md`](docs/UPGRADE.md) — dependency state and the order that mattered
 
 ---

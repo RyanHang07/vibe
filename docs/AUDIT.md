@@ -8,9 +8,40 @@ Read of `main` as of 11 Sept 2026. Ordered by severity, not by effort.
 
 | | Finding | State |
 |---|---|---|
-| **S1** | False API key security claim | **copy fixed** — plumbing still routes the key through Inngest event payloads |
+| **S1** | False API key security claim | **resolved** — copy fixed, and the key is now encrypted in transit through Inngest. See below. |
 | **S2** | Free tier at 100× Pro | **fixed** + invariant test |
-| **S3** | BYO-key inconsistent across paths, users pay twice | open |
+| **S3** | BYO-key inconsistent across paths, users pay twice | **resolved** — opposite to the fix this audit assumed. See below. |
+
+> ### S1 and S3, resolved 23 Sept
+>
+> **What changed upstream of both:** the deployment carries no provider key
+> of its own. Every user supplies theirs. That turned BYO-key from a
+> convenience into the credential the product runs on, and made both issues
+> urgent rather than tidy-up.
+>
+> **S1.** `@inngest/middleware-encryption` on the client, with
+> `eventEncryptionField: "apiKey"`. Step data and function output are
+> encrypted by default; naming the field covers the event payload without
+> restructuring every send and read. The client **throws at import** when
+> `INNGEST_ENCRYPTION_KEY` is absent rather than quietly sending plaintext,
+> because a security property that depends on an unchecked deploy step
+> fails in a way indistinguishable from success. Required the Inngest SDK
+> v3 → v4 upgrade that the middleware's v2 depends on.
+>
+> **S3.** Resolved opposite to this audit's assumption. The bug was not
+> that the message path failed to skip credits — it was that the project
+> path skipped at all.
+>
+> A user's key pays for model calls. Every run also creates an E2B sandbox
+> (4 GB, 4 CPUs, one per generation), which is ours whoever's key ran the
+> model, and is the larger per-run cost. So credits were never payment for
+> tokens. They are a rate limit on sandbox usage, they apply to everyone,
+> and there is no bypass.
+>
+> Worth recording as a case of the audit being right about the symptom and
+> wrong about the cause: "make BYO-key consistent" would have been
+> satisfied by skipping credits on both paths, which is the change that
+> loses money on every run.
 | **S4** | Nothing verifies the generated app works | open — **this is the next piece of work** |
 | **S5** | Dev artifacts, stale models, magic numbers | **fixed** — `lib/config.ts`, `lib/models.ts` |
 | **S6** | `api-key-form.tsx` untyped and off-system | **fixed** |

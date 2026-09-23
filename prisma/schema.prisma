@@ -91,6 +91,18 @@ model Run {
   /// all changed meaning, and none of it appeared in a Run row.
   sandboxTemplate String?
 
+  /// How far through the run we are, while it is still running.
+  ///
+  /// `status` says RUNNING / COMPLETED / FAILED, which is enough to analyse
+  /// a finished run and useless to someone watching one happen. This names
+  /// the current step so the UI can show what the harness is doing rather
+  /// than a spinner and a timer pretending to be progress.
+  ///
+  /// One of: sandbox | generating | typecheck | bundle | done.
+  /// Nullable because runs recorded before this column existed have no
+  /// stage, and inventing one for them would be a fiction about history.
+  stage String?
+
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   durationMs Int?

@@ -1,54 +1,30 @@
-import Image from "next/image";
-import { useState, useEffect } from "react";
+import { RunStages } from "./run-stages";
 
-const ShimmerMessages = () => {
-    const messages = [
-        "Thinking...",
-        "Loading...",
-        "Generating...",
-        "Analyzing...",
-        "Processing...",
-        "Optimizing...",
-        "Building your website...",
-        "Almost ready...",
-        "Adding finishing touches...",
-    ]
-
-    const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setCurrentMessageIndex((prevIndex) => (prevIndex + 1) % messages.length);
-        }, 2000);
-
-        return () => clearInterval(interval);
-    }, [messages.length]);
-
-    return (
-        <div className="flex items-center gap-2">
-            <span className="text-base text-muted-foreground animate-pulse">
-                {messages[currentMessageIndex]}
-            </span>
-        </div>
-    )
+interface Props {
+    projectId: string;
 }
 
-export const MessageLoading = () => {
+/**
+ * The card shown while a generation is in flight.
+ *
+ * It used to cycle invented status strings on a timer. It now renders the
+ * run's actual stages, read from the `Run` row the agent writes as it goes.
+ *
+ * The difference is not cosmetic: the old version would happily claim
+ * "Adding finishing touches" for a run that had died four minutes earlier,
+ * because nothing it displayed came from the run.
+ */
+export const MessageLoading = ({ projectId }: Props) => {
     return (
-        <div className="flex flex-col group px-2 pb-4">
-            <div className="flex items-center gap-2 pl-2 mb-2">
-                <Image
-                    src="/logo.svg"
-                    alt="Vibe"
-                    width={18}
-                    height={18}
-                    className="shrink-0"
-                />
-                <span className="text-sm font-medium">Vibe</span>   
+        <div className="flex flex-col px-3 pb-6">
+            <div className="mb-3 flex items-center gap-x-2">
+                <span className="font-sans text-sm font-bold tracking-tight">
+                    datum<span className="text-primary">.</span>
+                </span>
             </div>
-            <div className="pl-8.5 flex flex-col gap-y-4">
-                <ShimmerMessages />
+            <div className="rounded-lg border bg-background p-4">
+                <RunStages projectId={projectId} />
             </div>
         </div>
-    )
-}
+    );
+};

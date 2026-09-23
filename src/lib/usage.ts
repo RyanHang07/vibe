@@ -4,28 +4,19 @@ import { auth } from "@clerk/nextjs/server";
 
 
 /**
- * Generations included per billing window, by plan.
- *
- * These shipped inverted: FREE was 10000 against a PRO of 100, so free
- * accounts had a hundred times the paid allowance. A comment claimed the
- * value was 100 while the code said 10000. See docs/AUDIT.md S2.
- *
- * Pick the real numbers deliberately. The invariant below makes the
- * inversion impossible to reintroduce silently.
+ * The allowances themselves live in `lib/plans.ts`, which imports nothing
+ * server-only, so the pricing page can quote them without pulling Prisma
+ * and Clerk's server SDK into the browser bundle. Re-exported here so
+ * existing server-side imports keep working.
  */
-export const FREE_POINTS = 5;
-export const PRO_POINTS = 100;
+export {
+  FREE_POINTS,
+  PRO_POINTS,
+  DURATION,
+  GENERATION_COST,
+} from "./plans";
 
-/** 30 days, in seconds. */
-const DURATION = 30 * 24 * 60 * 60;
-
-const GENERATION_COST = 1;
-
-if (PRO_POINTS <= FREE_POINTS) {
-  throw new Error(
-    `Plan allowances are inverted: PRO_POINTS (${PRO_POINTS}) must exceed FREE_POINTS (${FREE_POINTS}).`,
-  );
-}
+import { DURATION, FREE_POINTS, GENERATION_COST, PRO_POINTS } from "./plans";
 
 export async function getUsageTracker() {
 
@@ -42,6 +33,57 @@ export async function getUsageTracker() {
     return usageTracker;
 };
 
+/**
+ * AUDIT S7: the out-of-credits branch was correct by accident.
+ *
+ * Call sites did this:
+ *
+ *     catch (error) {
+ *       if (error instanceof Error) → "Something went wrong"
+ *       else                        → "You have run out of credits"
+ *     }
+ *
+ * It worked, for a reason nobody wrote down: `rate-limiter-flexible`
+ * rejects with a plain `RateLimiterRes` object when the limit is hit, and
+ * with a real `Error` when something actually breaks. So "not an Error"
+ * happened to mean "rate limited".
+ *
+ * That is a load-bearing assumption about a third-party library's rejection
+ * type, inferred from behaviour and enforced nowhere. The day
+ * `RateLimiterRes` gains an `Error` base — a change its authors would
+ * reasonably consider an improvement — every out-of-credits response
+ * silently becomes "Something went wrong", and the user is told the app is
+ * broken instead of being sent to the pricing page.
+ *
+ * So the distinction is made explicitly, by shape, and turned into a named
+ * error the call sites can match on.
+ */
+export class OutOfCreditsError extends Error {
+    /** How long until the window resets, from the limiter. */
+    readonly msBeforeNext: number;
+
+    constructor(msBeforeNext: number) {
+        super("You have run out of credits");
+        this.name = "OutOfCreditsError";
+        this.msBeforeNext = msBeforeNext;
+    }
+}
+
+/**
+ * Identified by what it carries rather than by what it is not.
+ *
+ * `msBeforeNext` and `remainingPoints` are the fields that make a rejection
+ * a rate-limit result; an internal failure has neither. This holds whether
+ * or not the library ever changes the rejection's prototype.
+ */
+const isRateLimitRejection = (
+    value: unknown,
+): value is { msBeforeNext: number } =>
+    typeof value === "object" &&
+    value !== null &&
+    "msBeforeNext" in value &&
+    "remainingPoints" in value;
+
 export async function consumeCredits() {
     const { userId } = await auth();
 
@@ -50,9 +92,19 @@ export async function consumeCredits() {
     }
 
     const usageTracker = await getUsageTracker();
-    const result = await usageTracker.consume(userId, GENERATION_COST);
 
-    return result;
+    try {
+        return await usageTracker.consume(userId, GENERATION_COST);
+    } catch (error) {
+        if (isRateLimitRejection(error)) {
+            throw new OutOfCreditsError(error.msBeforeNext);
+        }
+
+        // A genuine failure — database down, table missing. Rethrown as
+        // itself rather than flattened into the credits case, so the call
+        // site can tell a broken app from a spent allowance.
+        throw error;
+    }
 };
 
 export async function getUsageStatus() {

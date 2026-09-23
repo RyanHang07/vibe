@@ -11,7 +11,7 @@ import { z } from "zod";
 import { PROMPT, FRAGMENT_TITLE_PROMPT, RESPONSE_PROMPT } from "@/prompt";
 import { prisma } from "@/lib/db";
 import { getModelId, getProvider, modelFor, providerForKey } from "@/lib/models";
-import { finishRun, startRun } from "@/lib/runs";
+import { finishRun, markStage, startRun } from "@/lib/runs";
 import { runBuildCheck } from "./build-check";
 import { infrastructureFault, markFault } from "@/lib/faults";
 import { CONFIG_VERSION, truncateForModel } from "@/lib/interventions";
@@ -37,9 +37,23 @@ interface AgentState {
   lastMessage?: string;
 }
 
+/**
+ * Inngest SDK v4 signature.
+ *
+ * v3 took three arguments — config, trigger, handler. v4 takes two, with
+ * the trigger moved into the config as a `triggers` array:
+ *
+ *   v3: createFunction({ id }, { event: "…" }, handler)
+ *   v4: createFunction({ id, triggers: [{ event: "…" }] }, handler)
+ *
+ * The upgrade came with `@inngest/middleware-encryption@2`, which requires
+ * SDK v4. Worth noting the failure mode: the third argument was silently
+ * dropped, so `event` and `step` lost their types and TypeScript reported
+ * it as `implicitly has an 'any' type` on the handler's parameters rather
+ * than as a changed signature. The real error is the arity one above it.
+ */
 export const codeAgentFunction = inngest.createFunction(
-  { id: "code-agent" },
-  { event: "code-agent/run" },
+  { id: "code-agent", triggers: [{ event: "code-agent/run" }] },
   async ({ event, step }) => {
     // A user-supplied key, when present, overrides the environment for this run.
     // modelFor() throws with a readable message when neither is available.
@@ -73,11 +87,23 @@ export const codeAgentFunction = inngest.createFunction(
       }),
     );
 
+    /**
+     * D4: report progress as it happens.
+     *
+     * Each stage is written in its own `step.run` rather than inline, so an
+     * Inngest retry does not rewind the reported stage — a replayed step
+     * returns its memoized result without re-executing, which is exactly
+     * the behaviour wanted here.
+     */
+    await step.run("stage-sandbox", () => markStage(runId, "sandbox"));
+
     const sandboxId = await step.run("get-sandbox-id", async () => {
       const sandbox = await Sandbox.create(SANDBOX_TEMPLATE);
       await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
       return sandbox.sandboxId;
     })
+
+    await step.run("stage-generating", () => markStage(runId, "generating"));
 
     const previousMessages = await step.run("get-previous-messages", async () => {
       const formattedMessages: Message[] = [];
@@ -542,9 +568,26 @@ export const codeAgentFunction = inngest.createFunction(
     // now, so the build check costs them nothing — it runs on the sandbox
     // while they read the output. Measurement should not make the product
     // slower, or it will eventually be switched off.
+    /**
+     * One stage for both checks, not two.
+     *
+     * `runBuildCheck` runs typecheck and bundle inside a single step, so
+     * there is no point between them where a stage could honestly be
+     * written. Reporting "typecheck" and then "bundle" from outside it
+     * would be a guess dressed as a status — the same failure as the timer
+     * this replaces, with better vocabulary.
+     *
+     * Splitting the step to report both is possible and not worth the extra
+     * round trip; `typecheck` is the name shown, and the UI marks bundle as
+     * pending until the verdict arrives.
+     */
+    await step.run("stage-typecheck", () => markStage(runId, "typecheck"));
+
     const checks = await step.run("build-check", async () =>
       runBuildCheck(sandboxId, fileCount, runSource),
     );
+
+    await step.run("stage-done", () => markStage(runId, "done"));
 
     // Eval sandboxes are released as soon as they have been measured.
     // Nobody is looking at an eval preview, and E2B caps concurrent

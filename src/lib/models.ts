@@ -189,6 +189,28 @@ export const envKeyFor = (provider: Provider): string | undefined =>
     ? process.env.ANTHROPIC_API_KEY
     : process.env.OPENAI_API_KEY;
 
+/**
+ * Does this deployment have a provider key of its own?
+ *
+ * WHY THE UI ASKS RATHER THAN ASSUMES
+ *
+ * Whether a user's key is required is a property of the deployment, not of
+ * the product. Locally there is a key in `.env` and evals run against it;
+ * in production there is none and every user supplies their own. The same
+ * code serves both.
+ *
+ * Hardcoding "(Optional)" in the form was wrong in production. Hardcoding
+ * "(Required)" would be wrong locally. Either way the label is an
+ * assertion, and an assertion about configuration is the kind that goes
+ * stale silently — it keeps rendering the old answer after the
+ * configuration moves.
+ *
+ * So the server reports what is true and the form renders that. Server-only:
+ * it reads `process.env`, and the answer is a boolean, never the key.
+ */
+export const hasServerKey = (): boolean =>
+  !!envKeyFor("anthropic") || !!envKeyFor("openai");
+
 export type ModelOptions = {
   role: ModelRole;
   /** Per-request key, e.g. a user-supplied one. Falls back to the environment. */

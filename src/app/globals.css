@@ -1,45 +1,110 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/*
+ * General Sans (the Aeonik Pro stand-in) is loaded from `layout.tsx`, not
+ * here. `@import "tailwindcss"` expands inline, so any `@import` written
+ * below it is no longer at the top of the generated file, and CSS requires
+ * `@import` to precede every rule. The build fails outright.
+ */
+
 @custom-variant dark (&:is(.dark *));
 
+/**
+ * DATUM DESIGN TOKENS — phase E of docs/BUILD_PLAN.md.
+ *
+ * Warm cream base, true-black ink, deep indigo accent, zero radius on
+ * layout and a small radius retained on controls.
+ *
+ * THE VERDICT COLOURS ARE NOT PART OF THE PALETTE.
+ *
+ * They are below, and they are fixed by meaning rather than chosen by
+ * taste. `unknown` must never read as a bad outcome — it is an absence of
+ * data, and colouring it like a failure is the visual form of counting it
+ * in the denominator, which is the mistake the entire harness was built to
+ * avoid. If the design language ever fights this, the design language
+ * loses.
+ */
 :root {
-  --background: oklch(0.9383 0.0042 236.4993);
-  --foreground: oklch(0.3211 0 0);
-  --card: oklch(1.0000 0 0);
-  --card-foreground: oklch(0.3211 0 0);
-  --popover: oklch(1.0000 0 0);
-  --popover-foreground: oklch(0.3211 0 0);
-  --primary: oklch(0.6397 0.1720 36.4421);
-  --primary-foreground: oklch(1.0000 0 0);
-  --secondary: oklch(0.9670 0.0029 264.5419);
-  --secondary-foreground: oklch(0.4461 0.0263 256.8018);
-  --muted: oklch(0.9846 0.0017 247.8389);
-  --muted-foreground: oklch(0.5510 0.0234 264.3637);
-  --accent: oklch(0.9119 0.0222 243.8174);
-  --accent-foreground: oklch(0.3791 0.1378 265.5222);
+  /* Warm cream, matching the reference's rgb(244, 233, 225). Not white:
+     a page largely made of compiler output needs the softening. */
+  --datum-cream: oklch(0.9385 0.0148 61.5);
+  --datum-cream-deep: oklch(0.9055 0.0184 61.5);
+
+  /* Deep indigo. Kept far from all three verdict colours on purpose —
+     an accent that sits near `unknown`'s amber would blur a distinction
+     that has to stay sharp. */
+  --datum-indigo: oklch(0.3900 0.1450 283.0);
+  --datum-indigo-bright: oklch(0.5200 0.1750 283.0);
+
+  --datum-ink: oklch(0.1600 0 0);
+
+  /**
+   * Verdicts. Three states, three colours, and the third is not a warmer
+   * red.
+   */
+  --verdict-pass: oklch(0.5600 0.1300 155.0);
+  --verdict-fail: oklch(0.5500 0.2000 27.0);
+  --verdict-unknown: oklch(0.6200 0.0300 260.0);
+
+  /* Radius: layout is square, controls are not. `--radius` drives the
+     shadcn components; layout squares itself with `rounded-none`. */
+  --radius: 0.375rem;
+
+  --background: var(--datum-cream);
+  --foreground: var(--datum-ink);
+  /*
+    `--card`, `--card-foreground`, `--popover` and `--popover-foreground`
+    were declared here with the tutorial's white/grey values and again
+    lower down with the Datum ones. The later declaration won, so the page
+    was correct — but two live definitions of the same token is how a
+    theme drifts, and it makes the file unreadable to anyone checking what
+    a colour actually is. The Datum values below are now the only ones.
+  */
+  --primary: var(--datum-indigo);
+  --primary-foreground: oklch(0.9800 0.0080 61.5);
+  --secondary: var(--datum-cream-deep);
+  --secondary-foreground: var(--datum-ink);
+  --muted: var(--datum-cream-deep);
+  --muted-foreground: oklch(0.4700 0.0120 61.5);
+  --accent: var(--datum-cream-deep);
+  --accent-foreground: var(--datum-indigo);
   --destructive: oklch(0.6368 0.2078 25.3313);
   --destructive-foreground: oklch(1.0000 0 0);
-  --border: oklch(0.9022 0.0052 247.8822);
-  --input: oklch(0.9700 0.0029 264.5420);
-  --ring: oklch(0.6397 0.1720 36.4421);
+  --border: oklch(0.8600 0.0140 61.5);
+  --input: oklch(0.9650 0.0100 61.5);
+  --ring: var(--datum-indigo);
   --chart-1: oklch(0.7156 0.0605 248.6845);
   --chart-2: oklch(0.7875 0.0917 35.9616);
   --chart-3: oklch(0.5778 0.0759 254.1573);
   --chart-4: oklch(0.5016 0.0849 259.4902);
   --chart-5: oklch(0.4241 0.0952 264.0306);
-  --sidebar: oklch(0.9030 0.0046 258.3257);
-  --sidebar-foreground: oklch(0.3211 0 0);
-  --sidebar-primary: oklch(0.6397 0.1720 36.4421);
-  --sidebar-primary-foreground: oklch(1.0000 0 0);
-  --sidebar-accent: oklch(0.9119 0.0222 243.8174);
-  --sidebar-accent-foreground: oklch(0.3791 0.1378 265.5222);
-  --sidebar-border: oklch(0.9276 0.0058 264.5313);
-  --sidebar-ring: oklch(0.6397 0.1720 36.4421);
-  --font-sans: Inter, sans-serif;
+  --card: var(--datum-cream);
+  --card-foreground: var(--datum-ink);
+  --popover: oklch(0.9700 0.0100 61.5);
+  --popover-foreground: var(--datum-ink);
+  --sidebar: var(--datum-cream-deep);
+  --sidebar-foreground: var(--datum-ink);
+  --sidebar-primary: var(--datum-indigo);
+  --sidebar-primary-foreground: oklch(0.9800 0.0080 61.5);
+  --sidebar-accent: var(--datum-cream);
+  --sidebar-accent-foreground: var(--datum-indigo);
+  --sidebar-border: oklch(0.8600 0.0140 61.5);
+  --sidebar-ring: var(--datum-indigo);
+
+  /**
+   * General Sans is the closest freely-licensed stand-in for Aeonik Pro,
+   * which the reference uses and which is licensed. System grotesks follow
+   * so the page never falls back to something with different proportions
+   * mid-load.
+   *
+   * Numerals are mono throughout. This product's content is figures,
+   * intervals and compiler output; tabular alignment is legibility here,
+   * not decoration.
+   */
+  --font-sans: "General Sans", "Schibsted Grotesk", Inter, system-ui, sans-serif;
   --font-serif: Source Serif 4, serif;
-  --font-mono: JetBrains Mono, monospace;
-  --radius: 0.75rem;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --shadow-2xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.05);
   --shadow-xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.05);
   --shadow-sm: 0px 1px 3px 0px hsl(0 0% 0% / 0.10), 0px 1px 2px -1px hsl(0 0% 0% / 0.10);
@@ -52,43 +117,67 @@
   --spacing: 0.25rem;
 }
 
+/**
+ * Dark mode.
+ *
+ * Not a separate palette — the same one inverted around its own axis. The
+ * base is the indigo pushed almost to black, so the accent panel reads as a
+ * lighter region of the same material rather than a foreign colour, and the
+ * text is the cream rather than a neutral grey.
+ *
+ * This block previously carried the tutorial's blue-grey theme, untouched.
+ * The result was a cream hero panel rendering `--foreground` light grey on
+ * it: display type at 8xl, effectively invisible. Overriding `:root` alone
+ * changes nothing for anyone whose system prefers dark, which is most
+ * people.
+ */
 .dark {
-  --background: oklch(0.2598 0.0306 262.6666);
-  --foreground: oklch(0.9219 0 0);
-  --card: oklch(0.3106 0.0301 268.6365);
-  --card-foreground: oklch(0.9219 0 0);
-  --popover: oklch(0.2900 0.0249 268.3986);
-  --popover-foreground: oklch(0.9219 0 0);
-  --primary: oklch(0.6397 0.1720 36.4421);
-  --primary-foreground: oklch(1.0000 0 0);
-  --secondary: oklch(0.3095 0.0266 266.7132);
-  --secondary-foreground: oklch(0.9219 0 0);
-  --muted: oklch(0.3095 0.0266 266.7132);
-  --muted-foreground: oklch(0.7155 0 0);
-  --accent: oklch(0.3380 0.0589 267.5867);
-  --accent-foreground: oklch(0.8823 0.0571 254.1284);
+  --background: oklch(0.1750 0.0280 283.0);
+  --foreground: oklch(0.9385 0.0110 61.5);
+  --card: oklch(0.2150 0.0320 283.0);
+  --card-foreground: oklch(0.9385 0.0110 61.5);
+  --popover: oklch(0.2150 0.0320 283.0);
+  --popover-foreground: oklch(0.9385 0.0110 61.5);
+
+  /* Lifted from --datum-indigo: the deep version disappears against a
+     near-black background. */
+  --primary: var(--datum-indigo-bright);
+  --primary-foreground: oklch(0.9800 0.0080 61.5);
+  --secondary: oklch(0.2550 0.0320 283.0);
+  --secondary-foreground: oklch(0.9385 0.0110 61.5);
+  --muted: oklch(0.2550 0.0320 283.0);
+  --muted-foreground: oklch(0.7100 0.0180 283.0);
+  --accent: oklch(0.2800 0.0480 283.0);
+  --accent-foreground: oklch(0.9385 0.0110 61.5);
   --destructive: oklch(0.6368 0.2078 25.3313);
   --destructive-foreground: oklch(1.0000 0 0);
-  --border: oklch(0.3843 0.0301 269.7337);
-  --input: oklch(0.3843 0.0301 269.7337);
-  --ring: oklch(0.6397 0.1720 36.4421);
+  --border: oklch(0.3100 0.0320 283.0);
+  --input: oklch(0.2800 0.0320 283.0);
+  --ring: var(--datum-indigo-bright);
   --chart-1: oklch(0.7156 0.0605 248.6845);
   --chart-2: oklch(0.7693 0.0876 34.1875);
   --chart-3: oklch(0.5778 0.0759 254.1573);
   --chart-4: oklch(0.5016 0.0849 259.4902);
   --chart-5: oklch(0.4241 0.0952 264.0306);
-  --sidebar: oklch(0.3100 0.0283 267.7408);
-  --sidebar-foreground: oklch(0.9219 0 0);
-  --sidebar-primary: oklch(0.6397 0.1720 36.4421);
-  --sidebar-primary-foreground: oklch(1.0000 0 0);
-  --sidebar-accent: oklch(0.3380 0.0589 267.5867);
-  --sidebar-accent-foreground: oklch(0.8823 0.0571 254.1284);
-  --sidebar-border: oklch(0.3843 0.0301 269.7337);
-  --sidebar-ring: oklch(0.6397 0.1720 36.4421);
-  --font-sans: Inter, sans-serif;
-  --font-serif: Source Serif 4, serif;
-  --font-mono: JetBrains Mono, monospace;
-  --radius: 0.75rem;
+  --sidebar: oklch(0.2150 0.0320 283.0);
+  --sidebar-foreground: oklch(0.9385 0.0110 61.5);
+  --sidebar-primary: var(--datum-indigo-bright);
+  --sidebar-primary-foreground: oklch(0.9800 0.0080 61.5);
+  --sidebar-accent: oklch(0.2800 0.0480 283.0);
+  --sidebar-accent-foreground: oklch(0.9385 0.0110 61.5);
+  --sidebar-border: oklch(0.3100 0.0320 283.0);
+  --sidebar-ring: var(--datum-indigo-bright);
+
+  /**
+   * Verdict colours, lifted for a dark background.
+   *
+   * Same three meanings, same ordering, adjusted only for legibility. The
+   * constraint survives the inversion: `unknown` stays neutral and never
+   * drifts toward the red.
+   */
+  --verdict-pass: oklch(0.7200 0.1500 155.0);
+  --verdict-fail: oklch(0.6800 0.1900 27.0);
+  --verdict-unknown: oklch(0.7200 0.0300 283.0);
   --shadow-2xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.05);
   --shadow-xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.05);
   --shadow-sm: 0px 1px 3px 0px hsl(0 0% 0% / 0.10), 0px 1px 2px -1px hsl(0 0% 0% / 0.10);
@@ -133,6 +222,16 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
+  /* Datum tokens, usable as bg-indigo / text-verdict-pass etc. */
+  --color-cream: var(--datum-cream);
+  --color-cream-deep: var(--datum-cream-deep);
+  --color-indigo: var(--datum-indigo);
+  --color-indigo-bright: var(--datum-indigo-bright);
+  --color-ink: var(--datum-ink);
+  --color-verdict-pass: var(--verdict-pass);
+  --color-verdict-fail: var(--verdict-fail);
+  --color-verdict-unknown: var(--verdict-unknown);
+
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
@@ -166,6 +265,82 @@
   [role="button"]:not([disabled]) {
     cursor: pointer;
   }
+
+  /**
+   * Line breaking.
+   *
+   * `text-wrap: balance` evens out the lines of a short heading instead of
+   * leaving one orphaned word on the last line — the single cheapest thing
+   * that separates typeset display text from default browser output. It is
+   * capped by browsers at a small number of lines, so it is scoped to
+   * headings rather than applied to body copy.
+   *
+   * `text-wrap: pretty` handles the body case: it prevents orphans without
+   * the line-count limit, at a lower cost than balancing.
+   *
+   * Both are Baseline widely available, so no fallback is needed: a browser
+   * that does not understand them simply wraps as it always did.
+   */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p,
+  li {
+    text-wrap: pretty;
+  }
+}
+
+/**
+ * Fluid display type, bound to its container rather than the viewport.
+ *
+ * WHY CONTAINER UNITS AND NOT BREAKPOINTS
+ *
+ * The hero is a two-column split, so the claim panel is half the viewport
+ * on desktop and none of it on mobile. Sizing its display type in `vw`, or
+ * stepping it at `lg:`, describes the window rather than the box the text
+ * actually lives in — the figure would jump at a breakpoint that has
+ * nothing to do with how much room it has.
+ *
+ * `cqi` is the container's inline size, so the number scales with the panel
+ * itself. `clamp()` bounds it at both ends, which is what stops fluid type
+ * from becoming unreadable on a narrow container or absurd on a wide one.
+ *
+ * Container queries have been Baseline widely available since Feb 2023, so
+ * no fallback is needed. The one requirement is a containment context on an
+ * ancestor: without `container-type`, these units silently fall back to the
+ * small viewport, which looks like the rule working until the layout moves.
+ */
+@utility display-figure {
+  font-size: clamp(3rem, 15cqi, 8.5rem);
+  line-height: 0.85;
+  letter-spacing: -0.04em;
+}
+
+@utility display-head {
+  font-size: clamp(2.25rem, 7.5cqi, 4.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+@utility display-lead {
+  font-size: clamp(1.0625rem, 2.2cqi, 1.5rem);
+  line-height: 1.45;
+}
+
+/**
+ * Placeholder sized to the figure it stands in for.
+ *
+ * The block size is `display-figure`'s clamp multiplied by its 0.85 line
+ * height, so the skeleton occupies exactly the space the number will. A
+ * skeleton that is not the right size is just a differently-shaped layout
+ * shift.
+ */
+@utility display-figure-skeleton {
+  block-size: clamp(2.55rem, 12.75cqi, 7.225rem);
+  inline-size: clamp(9rem, 42cqi, 24rem);
 }
 
 /* Animations */

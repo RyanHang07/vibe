@@ -1,1 +1,24 @@
-<svg id="logo-44" width="41" height="40" viewBox="0 0 41 40" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M20 0C8.9543 0 0 8.9543 0 20C11.0457 20 20 11.0457 20 0Z" fill="#df9b8e" class="ccustom"></path> <path d="M20 40C31.0457 40 40 31.0457 40 20C28.9543 20 20 28.9543 20 40Z" fill="#df9b8e" class="ccustom"></path> <path d="M20 0C31.0457 0 40 8.9543 40 20C28.9543 20 20 11.0457 20 0Z" fill="#C96342" class="ccompli2"></path> <path d="M20 40C8.9543 40 -9.65645e-07 31.0457 0 20C11.0457 20 20 28.9543 20 40Z" fill="#C96342" class="ccompli2"></path> </svg>
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Datum">
+  <!--
+    A point estimate with its interval.
+
+    The old mark was four quarter-circles in terracotta, from the tutorial.
+    This one is the project's argument in one glyph: a measured value, and
+    the honest range around it. The dot sits off-centre because a Wilson
+    interval is asymmetric — the bracket is wider on the side with more room
+    to be wrong, which is the whole reason the project does not use the
+    textbook interval.
+
+    Indigo `#5a4bd1` rather than the deeper `--datum-indigo`: it holds up on
+    both the cream field and a dark background, and the mark appears on both.
+  -->
+  <g stroke="#5a4bd1" stroke-width="3.5" stroke-linecap="round">
+    <!-- The interval -->
+    <line x1="5" y1="20" x2="35" y2="20" opacity="0.4" />
+    <!-- Its bounds -->
+    <line x1="5" y1="11" x2="5" y2="29" />
+    <line x1="35" y1="11" x2="35" y2="29" />
+  </g>
+  <!-- The estimate -->
+  <circle cx="16" cy="20" r="6" fill="#5a4bd1" />
+</svg>

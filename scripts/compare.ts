@@ -205,7 +205,7 @@ const main = async () => {
    * time.
    */
   const ranked = shared
-    .map((id) => ({ id, baseline: mean(left.times.get(id)!) }))
+    .map((id) => ({ id, baseline: mean(left.times.get(id) ?? []) }))
     .sort((a, b) => b.baseline - a.baseline);
 
   const half = Math.floor(ranked.length / 2);
@@ -218,8 +218,13 @@ const main = async () => {
     console.log("\n  pre-registered split, ranked by A's duration");
 
     for (const stratum of strata) {
+      // The tuple annotation is load-bearing: without it TypeScript infers
+      // `(string | number[])[]` from the array literal rather than a
+      // [key, value] pair, and the Map constructor rejects it.
       const subset = (source: Map<string, number[]>) =>
-        new Map(stratum.ids.map((id) => [id, source.get(id)!]));
+        new Map(
+          stratum.ids.map((id): [string, number[]] => [id, source.get(id) ?? []]),
+        );
 
       const inner = pairedDifference(
         subset(left.times),

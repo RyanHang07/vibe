@@ -4,6 +4,189 @@
 > finish the loop, write it up, port the analysis layer to Python.
 > Everything else — trace visualisation, 3D terrain, multi-agent — is
 > deferred. They add polish to a claim that is not yet complete.
+>
+> **Revised 23 Sept, after the loop closed.** A and B are done. A fourth
+> phase was added ahead of C: the measurement exists entirely in CLI scripts
+> and markdown, and none of it is visible in the product it measures.
+
+---
+
+## Status
+
+| Phase | State |
+|---|---|
+| **A — finish the loop** | **done.** v5 → v6 measured end to end, paired, prediction on record beforehand, result NOT RESOLVED with its bound stated. |
+| **B — the writeup** | **drafted.** `docs/WRITEUP.md`. Numbers are real; wants one editing pass. |
+| **D — surface it in the app** | **in progress.** See below. Inserted ahead of C deliberately. |
+| **C — Python analysis layer** | not started. |
+
+**Why D jumped the queue.** A visitor opening the deployed app sees a
+tutorial: "Build opportunity with Vibe — create stunning applications and
+websites by chatting with AI." Every claim the project actually makes lives
+in terminal output and markdown files. The work and its evidence are in two
+different places, and only one of them is the thing people look at.
+
+---
+
+## Phase D — surface the measurement in the product
+
+### D1 · Rename to Datum
+
+`Vibe` is the tutorial's name and describes the opposite of what this
+became. A datum is the fixed reference point everything else is measured
+against, which is what a versioned baseline is.
+
+**User-facing strings only.** Deliberately NOT renamed:
+
+- `/tmp/vibe-build` and the other sandbox paths
+- `VIBE_*` environment variables
+- the E2B template name and id
+
+Those are load-bearing. `config.test.ts` asserts on the build path, the
+template name refers to a published E2B image, and the env vars appear in
+`.env` files that already exist. Renaming them would be a behaviour change
+wearing a cosmetic label — exactly the kind of substitution this project
+exists to refuse. They get their own commit, with `doctor` run afterwards,
+or they stay as they are.
+
+### D2 · An honest hero
+
+Replace "Build opportunity with Vibe / Create stunning applications and
+websites by chatting with AI" with the actual claim, and put a live number
+on it: the current measured typecheck rate with its interval, read from the
+database rather than written into the page.
+
+A landing page quoting a number that updates itself is a different kind of
+claim from one quoting a number someone typed in.
+
+### D3 · Evidence tab in the project view
+
+Alongside preview and code. Scoped to that project's runs:
+
+- verdict per generation — typecheck and bundle, `pass` / `fail` / `unknown`
+  kept visually distinct, because `null` is not `false`
+- compiler output on failure, not a summary of it
+- the failure shape, from the same taxonomy the CLI uses
+- config version and template id, so a verdict is attributable to a target
+
+### D4 · Live verdict during generation
+
+A pop-out that updates while the run is in flight: generating → checking
+types → bundling → verdict. Today the user waits with no signal, then gets a
+summary that has historically been wrong about one run in twelve.
+
+This is the single most direct expression of the whole project inside the
+product: **the app stops telling the user it worked and starts showing them
+whether it did.**
+
+### D5 · README restructured around the writeup
+
+Lead with the near-miss — a clean, tightly-bracketed, monotonic result that
+was partly about an unpinned `npm install` — then the harness that caught
+it. Current README opens with architecture, which is the second-most
+interesting thing about the repo.
+
+---
+
+---
+
+## Phase E — the UI overhaul
+
+> **After D, not during.** D changes what the app says. E changes how it
+> looks. Doing both at once means a visual regression and a data bug arrive
+> in the same commit and neither can be bisected.
+
+Reference: [units.gr](https://units.gr/en/homepage/) — student housing, by
+Big Horror. The relevant thing is not the subject matter, it is the
+confidence: an editorial layout that behaves like a printed magazine rather
+than a SaaS dashboard.
+
+### What that reference actually does
+
+Read off the live site rather than described from memory:
+
+| | |
+|---|---|
+| Base | `rgb(244, 233, 225)` — warm cream, not white. Everything sits on it. |
+| Type | Aeonik Pro, a neo-grotesk. Heavy display weights, very tight leading, headlines set in two or three short lines. |
+| Radius | `0px`. Nothing is rounded. |
+| Colour | Full-bleed saturated panels — electric blue, orange, indigo — one per section, switching as you scroll. |
+| Wordmark | Lowercase with a terminating period: `units.` |
+| Structure | Numbered sections (`01`, `02`) with arrow affordances. |
+| Motion | A held intro animation before content, then scroll-driven panel transitions. |
+
+The takeaway: **large type, flat colour, no rounding, generous space, and
+one idea per screen.**
+
+### Translating it, not copying it
+
+Their palette sells warmth and belonging. This product's subject is
+measurement, so the same structural confidence should carry a different
+temperature.
+
+- **Base:** warm off-white, near their cream. Softens a page that is
+  otherwise full of compiler output.
+- **Ink:** true black for display type.
+- **One accent**, used structurally rather than decoratively.
+- **Three verdict colours**, and these are functional rather than
+  aesthetic: pass, fail, and a third that is *not* a warmer red. `unknown`
+  must never read as a bad outcome, because it is an absence of data. This
+  constraint outranks the visual system.
+- **Numerals in a mono face.** The product's content is largely figures,
+  intervals and compiler output, and tabular alignment is legibility, not
+  decoration.
+
+### Typography
+
+Aeonik Pro is licensed. Closest freely available substitutes, in order:
+
+1. **General Sans** (Fontshare) — nearest in proportion and feel
+2. **Schibsted Grotesk** (Google Fonts) — easiest to self-host
+3. **Inter Tight** — safest, least distinctive
+
+Display type wants a real weight jump (600-800), tight tracking, and a hard
+size step between headline and body. Mid-weights everywhere is what makes a
+page read as a template.
+
+### Mobile
+
+The current app is desktop-first and the project view is a horizontally
+resizable two-pane split, which does not exist on a phone.
+
+- Below `md`, the split collapses to a single column with the panes as a
+  tab bar: **Chat · Demo · Code · Evidence**
+- `ResizablePanelGroup` renders only at `md` and up
+- Evidence cards reflow to stacked rows; compiler output stays in a
+  horizontally scrollable `pre` rather than wrapping into unreadable soup
+- Hit targets at 44px, and the homepage claim card readable at 375px
+
+### Order
+
+1. Design tokens — colour, type scale, radius, spacing — in `globals.css`
+2. Font loading and the type scale
+3. Homepage: hero, claim card, project list
+4. Project view: mobile collapse first, then desktop polish
+5. Evidence panel restyle, verdict colours last so they are chosen against
+   finished surroundings
+
+### The one rule for phase E
+
+**No data or logic changes.** If a component needs different data to look
+right, that is a D-phase change and it goes in its own commit. A UI overhaul
+that quietly alters what a number means is the hardest kind of bug to find
+later, because the diff looks like CSS.
+
+---
+
+## What is NOT in phase D
+
+Recorded so the scope does not drift mid-build:
+
+- the 2D trace view and the 3D aggregate terrain
+- multi-agent orchestration, LangGraph
+- the rebrand of sandbox paths and env vars (D1 note above)
+- fixing the ~15 infrastructure faults per batch
+- S1, S3, S7 from `AUDIT.md`
 
 ---
 

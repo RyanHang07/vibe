@@ -23,6 +23,14 @@ export type ApiKeyInputProps = {
   onApiKeyChange?: (apiKey: string | null) => void;
   placeholder?: string;
   className?: string;
+  /**
+   * Whether this deployment has a provider key of its own.
+   *
+   * Passed in rather than read here, because it comes from the server:
+   * see `hasServerKey` in lib/models. The component renders the answer; it
+   * does not decide it.
+   */
+  required?: boolean;
 };
 
 /**
@@ -37,6 +45,7 @@ export function ApiKeyInput({
   onApiKeyChange,
   placeholder = "sk-...",
   className,
+  required = false,
 }: ApiKeyInputProps) {
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -72,10 +81,24 @@ export function ApiKeyInput({
       >
         <Key className="size-4" aria-hidden />
         API key
+        {/*
+          The label states what is true of THIS deployment rather than
+          asserting one answer for all of them. `required` comes from the
+          server — see `hasServerKey` in lib/models.
+        */}
         <span className="text-xs font-normal">
-          (optional &middot; OpenAI or Anthropic)
+          {required ? "required" : "optional"} · OpenAI or Anthropic
         </span>
       </label>
+
+      {required && (
+        <p className="mb-3 text-sm text-muted-foreground">
+          This app has no provider key of its own, so generations run on
+          yours and are billed to your account. The key is sent to the
+          server for the duration of a run, encrypted in transit through the
+          job queue, and never stored.
+        </p>
+      )}
 
       <div
         className={cn(
@@ -157,11 +180,19 @@ export function ApiKeyInput({
             Where this key goes
           </p>
           <p>
-            Your key is sent to our server and passed to the background job that
-            runs the agent, where it is used to call OpenAI on your behalf. It
-            is not written to our database, but it does appear in our job
-            queue&apos;s event log. Leave this blank to use your account credits
-            instead.
+            Your key is sent to our server and passed to the background job
+            that runs the agent, where it is used to call the provider on
+            your behalf. It is not written to our database, but it does
+            appear in our job queue&apos;s event log.
+          </p>
+          {/*
+            The old copy ended "Leave this blank to use your account credits
+            instead", which promises a keyless path this deployment may not
+            have. Describe the mechanism, do not promise an outcome.
+          */}
+          <p className="mt-1">
+            Without a key, generation falls back to the server&apos;s own
+            provider credentials, if it has any.
           </p>
         </div>
       </div>
