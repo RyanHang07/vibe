@@ -8,13 +8,23 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "eval": "tsx --env-file=.env scripts/run-eval.ts",
+    "inngest": "inngest-cli dev -u http://localhost:3000/api/inngest",
+    "report": "tsx --env-file=.env scripts/report.ts",
+    "baseline": "tsx --env-file=.env scripts/baseline.ts",
+    "power": "tsx --env-file=.env scripts/power.ts",
+    "compare": "tsx --env-file=.env scripts/compare.ts",
+    "shapes": "tsx --env-file=.env scripts/shapes.ts",
+    "check:model": "tsx --env-file=.env scripts/check-model.ts",
+    "doctor": "tsx --env-file=.env scripts/doctor.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run typecheck && npm run lint && npm run test",
     "postinstall": "prisma generate"
   },
   "overrides": {
-    "qs": "^6.16.0"
+    "qs": "^6.16.0",
+    "adm-zip": "^0.6.1"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.28.1",
@@ -89,6 +99,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^16.3.5",
+    "inngest-cli": "^1.44.0",
     "prisma": "^6.12.0",
     "tailwindcss": "^4",
     "tsx": "^4.20.3",
@@ -102,6 +113,7 @@
     "prisma@6.12.0": true,
     "@tailwindcss/oxide@4.1.11": true,
     "esbuild@0.25.12": true,
-    "unrs-resolver@1.11.1": true
+    "unrs-resolver@1.11.1": true,
+    "inngest-cli@1.44.0": true
   }
 }

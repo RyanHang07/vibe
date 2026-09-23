@@ -155,3 +155,225 @@ export const trialsForWidth = (width: number, level = 0.95): number => {
   // Worst case p = 0.5, where the interval is widest.
   return Math.ceil((z * z * 0.25) / ((width / 2) * (width / 2)));
 };
+
+/* ------------------------------------------------------------------ *
+ * Continuous measures: can this design resolve anything?
+ * ------------------------------------------------------------------ */
+
+export type VarianceSplit = {
+  /** Number of groups (cases) with at least one observation. */
+  groups: number;
+  /** Number of groups with at least two, which is what within-group needs. */
+  groupsWithRepeats: number;
+  observations: number;
+  grandMean: number;
+  /** Spread of the group means around the grand mean. */
+  betweenSd: number;
+  /** Pooled spread of observations around their own group mean. */
+  withinSd: number;
+  /** Spread ignoring groups entirely. */
+  totalSd: number;
+};
+
+/**
+ * Split the spread of a continuous measure into between-group and
+ * within-group parts.
+ *
+ * WHY THIS DECIDES WHETHER AN EXPERIMENT IS WORTH RUNNING
+ *
+ * Agent time on the golden set varies for two unrelated reasons. A trivial
+ * case is fast and an adversarial case is slow — that is between-case
+ * variance, and it is enormous. The same case run twice varies too — that is
+ * within-case variance, and it is the only part an intervention has to beat.
+ *
+ * Compare two configs by throwing all runs into two buckets and the
+ * between-case variance lands in the noise term, even though both configs
+ * ran the same cases. The experiment then needs a vast effect to clear a
+ * bar made mostly of "trivial-01 is not complex-03".
+ *
+ * Pair on the case and that term cancels. It is the same reasoning as a
+ * before-and-after measurement on the same subject, and it is usually worth
+ * several times the sample size.
+ *
+ * Groups with a single observation still count toward the between term.
+ * They contribute nothing to the within term and are not pretended to.
+ */
+export const varianceSplit = (
+  groups: Map<string, number[]>,
+): VarianceSplit => {
+  const all = [...groups.values()].flat();
+  const n = all.length;
+
+  if (n === 0) {
+    return {
+      groups: 0,
+      groupsWithRepeats: 0,
+      observations: 0,
+      grandMean: Number.NaN,
+      betweenSd: Number.NaN,
+      withinSd: Number.NaN,
+      totalSd: Number.NaN,
+    };
+  }
+
+  const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+  const grandMean = mean(all);
+
+  const groupMeans = [...groups.values()]
+    .filter((xs) => xs.length > 0)
+    .map(mean);
+
+  /**
+   * Sample standard deviations, dividing by (count - 1).
+   *
+   * Dividing by the count understates the spread, which here would
+   * understate the noise floor and make an underpowered experiment look
+   * adequate. That is the direction of error this whole file exists to
+   * avoid, so the conservative denominator is not optional.
+   */
+  const sampleSd = (xs: number[], centre: number, dof: number) =>
+    dof <= 0
+      ? Number.NaN
+      : Math.sqrt(
+          xs.reduce((s, x) => s + (x - centre) ** 2, 0) / dof,
+        );
+
+  const withRepeats = [...groups.values()].filter((xs) => xs.length >= 2);
+
+  // Pooled within-group: every deviation from its own group mean, with one
+  // degree of freedom spent per group that contributed.
+  const withinDeviations = withRepeats.flatMap((xs) => {
+    const m = mean(xs);
+    return xs.map((x) => x - m);
+  });
+  const withinDof = withinDeviations.length - withRepeats.length;
+
+  return {
+    groups: groupMeans.length,
+    groupsWithRepeats: withRepeats.length,
+    observations: n,
+    grandMean,
+    betweenSd: sampleSd(groupMeans, mean(groupMeans), groupMeans.length - 1),
+    withinSd: sampleSd(withinDeviations, 0, withinDof),
+    totalSd: sampleSd(all, grandMean, n - 1),
+  };
+};
+
+/**
+ * Smallest difference in means a two-arm comparison could detect.
+ *
+ * Returns the effect size at which a test would reach significance roughly
+ * half the time — the conventional "minimum detectable effect" at 80% power
+ * uses 2.8 standard errors rather than 1.96, because an effect exactly at
+ * the significance threshold is missed as often as it is caught.
+ *
+ * `sd` is the noise the design actually faces: total spread for an unpaired
+ * comparison, within-group spread for a paired one. `n` is observations per
+ * arm, or pairs.
+ */
+export const minimumDetectableEffect = (
+  sd: number,
+  n: number,
+  level = 0.95,
+): number => {
+  if (!Number.isFinite(sd) || n <= 1) return Number.NaN;
+  // z for the test plus z for 80% power (0.8416).
+  return (zFor(level) + 0.8416212335729143) * sd * Math.sqrt(2 / n);
+};
+
+export type PairedResult = {
+  /** Cases present in both arms. */
+  pairs: number;
+  /** Mean of (a - b). Negative means b is faster. */
+  meanDifference: number;
+  lower: number;
+  upper: number;
+  level: number;
+  /**
+   * False when the interval straddles zero. "Not shown" — which is not the
+   * same as "no effect", and the difference is the whole discipline.
+   */
+  resolved: boolean;
+  /** Cases that appeared in one arm only, and so contribute nothing. */
+  dropped: string[];
+};
+
+/**
+ * Compare two configurations case by case.
+ *
+ * WHY PAIRED AND NOT TWO BUCKETS
+ *
+ * Agent time on this golden set has a between-case standard deviation of
+ * roughly 65s and a within-case one of roughly 9s. Pooling every run of one
+ * config against every run of the other puts that 65s into the noise term,
+ * even though both arms ran the identical 24 cases. The experiment then has
+ * to beat the difference between `trivial-01` and `complex-03` before it
+ * can see anything, and it never had to.
+ *
+ * Differencing each case against itself cancels the case entirely. What
+ * remains is the only variation the intervention could have caused.
+ *
+ * A case present in one arm only is dropped and named. Substituting the
+ * other arm's mean for a missing value would quietly assume the very thing
+ * being measured, and a case that failed under one config and not the other
+ * is a result about the pass rate, not a data point about latency.
+ */
+export const pairedDifference = (
+  a: Map<string, number[]>,
+  b: Map<string, number[]>,
+  level = 0.95,
+): PairedResult => {
+  const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+
+  const keys = [...new Set([...a.keys(), ...b.keys()])].sort();
+  const differences: number[] = [];
+  const dropped: string[] = [];
+
+  for (const key of keys) {
+    const left = a.get(key);
+    const right = b.get(key);
+
+    if (!left?.length || !right?.length) {
+      dropped.push(key);
+      continue;
+    }
+
+    differences.push(mean(left) - mean(right));
+  }
+
+  const pairs = differences.length;
+
+  if (pairs < 2) {
+    return {
+      pairs,
+      meanDifference: Number.NaN,
+      lower: Number.NaN,
+      upper: Number.NaN,
+      level,
+      resolved: false,
+      dropped,
+    };
+  }
+
+  const centre = mean(differences);
+  const sd = Math.sqrt(
+    differences.reduce((s, d) => s + (d - centre) ** 2, 0) / (pairs - 1),
+  );
+  const margin = zFor(level) * (sd / Math.sqrt(pairs));
+
+  const lower = centre - margin;
+  const upper = centre + margin;
+
+  return {
+    pairs,
+    meanDifference: centre,
+    lower,
+    upper,
+    level,
+    // Straddling zero means the sign of the effect is unknown. Reporting
+    // the point estimate as a result at that stage is how null results
+    // become success stories.
+    resolved: lower > 0 || upper < 0,
+    dropped,
+  };
+};

@@ -1,0 +1,40 @@
+# Line endings are a property of this repository, not of whoever cloned it.
+#
+# Without this file, behaviour depends on each machine's `core.autocrlf`,
+# which is why Git warns that "LF will be replaced by CRLF". That warning is
+# harmless on its own. What is not harmless is a shell script checked out
+# with CRLF and then run inside a Linux container: bash fails with
+# `$'\r': command not found`, an error that names a character rather than a
+# file.
+#
+# `text=auto eol=lf` normalises everything to LF in the repository and checks
+# it out as LF. Every editor worth using on Windows handles LF, and Node
+# tooling assumes it.
+
+* text=auto eol=lf
+
+# Explicitly LF, because these are executed rather than read.
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
+*.Dockerfile text eol=lf
+
+# Windows-only scripts, which genuinely need CRLF.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binary: never normalise, never diff as text.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.pdf       binary
+*.node      binary
+
+# Generated. Keep it out of diffs and reviews.
+package-lock.json   -diff linguist-generated
+src/generated/**    -diff linguist-generated

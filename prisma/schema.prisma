@@ -23,6 +23,123 @@ model Project {
 
 
   messages Message[]
+  runs Run[]
+}
+
+/// Where a run came from. Eval runs must be separable from real user
+/// traffic, or the baseline is measuring both at once.
+enum RunSource {
+  USER
+  EVAL
+}
+
+enum RunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+/// One invocation of the code agent.
+///
+/// This table is the foundation of docs/PLAN.md: nothing about the agent can
+/// be measured until there is a record of what it did. Slice 1 only records.
+/// Scoring arrives in slice 2.
+model Run {
+  id String @id @default(uuid())
+
+  /// Nullable, and SetNull rather than Cascade, on purpose. A Run is a
+  /// historical fact about a measurement that already happened. Deleting the
+  /// project it came from should not erase the evidence — the same reason
+  /// solarity's progress_entries outlive their goal.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  source RunSource @default(USER)
+  status RunStatus @default(RUNNING)
+
+  /// The user's request, stored verbatim. Comparing runs means comparing
+  /// what was actually asked, not what we think was asked.
+  prompt   String
+  provider String
+  model    String
+
+  /// Which golden-set case produced this run, for EVAL runs.
+  ///
+  /// Stored rather than recovered by matching prompt text later. A join on
+  /// a free-text column breaks silently the first time a prompt is reworded,
+  /// and the breakage looks like a case that stopped being run rather than
+  /// a join that stopped matching.
+  caseId String?
+
+  /// Which agent configuration produced this run.
+  ///
+  /// Slice 6: interventions are versioned, and every run records the
+  /// version it ran under. Without it, a change and its effect are joined
+  /// only by "I think I was on the old settings then", which is not
+  /// evidence. This is what makes a before-and-after comparison possible.
+  configVersion String?
+
+  /// The E2B template this run generated against.
+  ///
+  /// The template decides the framework version, the component library and
+  /// the installed component set — so it decides what "correct output"
+  /// means. Two batches built against different templates are not
+  /// comparable, and without this column nothing would say so.
+  ///
+  /// It is the least-pinned part of the measurement: over one rebuild the
+  /// Next version, the shadcn version, the `-b` flag and the component set
+  /// all changed meaning, and none of it appeared in a Run row.
+  sandboxTemplate String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+
+  /// What the agent produced. `hasSummary` is the old success heuristic,
+  /// kept so slice 2 can show how much it disagrees with a real build check.
+  fileCount    Int?
+  hasSummary   Boolean @default(false)
+  errorMessage String?
+
+  inputTokens  Int?
+  outputTokens Int?
+
+  /// Slice 2: did the generated code actually build?
+  ///
+  /// This is the success signal the whole project is measured against.
+  /// Nullable rather than defaulting to false, because "we did not check"
+  /// and "it failed" are different facts and must not be averaged together.
+  /// Bundling: `next build --no-lint`. Syntax, client/server boundaries,
+  /// unresolvable imports. Observed at ~11s.
+  buildAttempted   Boolean @default(false)
+  buildSucceeded   Boolean?
+  buildExitCode    Int?
+  /// Tail of the output. The tail, not the head — build tools print
+  /// the failure summary last.
+  buildStderr      String?
+  buildDurationMs  Int?
+
+  /// Type checking: `tsc --noEmit`. Wrong props, missing imports, invented
+  /// APIs — the most common way generated code is wrong.
+  ///
+  /// Kept in its own columns rather than merged into the build result.
+  /// "62% build" says less than "88% typecheck, 71% bundle", because the
+  /// second says where to intervene.
+  typecheckAttempted  Boolean @default(false)
+  typecheckSucceeded  Boolean?
+  typecheckExitCode   Int?
+  typecheckStderr     String?
+  typecheckDurationMs Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([source, startedAt])
+  @@index([status])
+  @@index([buildSucceeded])
+  @@index([typecheckSucceeded])
+  @@index([caseId])
+  @@index([configVersion])
 }
 
 enum MessageRole {

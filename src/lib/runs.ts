@@ -22,6 +22,8 @@ export type StartRunInput = {
   caseId?: string;
   /** Which agent configuration this run used. */
   configVersion?: string;
+  /** Which E2B template it generated against. */
+  sandboxTemplate?: string;
 };
 
 /** Opens a run. Returns the id, which `finishRun` needs. */
@@ -33,6 +35,7 @@ export const startRun = async ({
   source = "USER",
   caseId,
   configVersion,
+  sandboxTemplate,
 }: StartRunInput): Promise<string> => {
   const run = await prisma.run.create({
     data: {
@@ -43,6 +46,7 @@ export const startRun = async ({
       source,
       caseId,
       configVersion,
+      sandboxTemplate,
       status: "RUNNING",
     },
     select: { id: true },

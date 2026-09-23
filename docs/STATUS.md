@@ -63,6 +63,106 @@ Every single one of those distinctions has since prevented a false number. The c
 
 ---
 
+## First baseline — 23 Sept 2026
+
+Config `v3-nextjs16-truncate`, template `mxamtmd9qj4rtpavlkdd`,
+`claude-haiku-4-5` (lightest tier). **44 runs.**
+
+```
+  typecheck      39/44  =  88.6%  [76.0%, 95.0%]
+  bundle         39/44  =  88.6%  [76.0%, 95.0%]
+
+  by difficulty
+    trivial       8/8   = 100.0%
+    simple        9/10  =  90.0%
+    moderate     10/11  =  90.9%
+    complex       7/8   =  87.5%
+    adversarial   5/7   =  71.4%
+```
+
+### The measurement is stable
+
+| | 21 runs | 44 runs |
+|---|---|---|
+| typecheck | 90.5% [71.1, 97.3] | 88.6% [76.0, 95.0] |
+| false success | 14.3% [5.0, 34.6] | 12.2% [5.3, 25.5] |
+
+Point estimates held; intervals roughly halved. More data narrowing the
+bracket without moving the answer is what a reliable instrument looks like.
+
+### The ceiling problem
+
+**At 88.6% with ±19 points of resolution, no intervention can be shown to
+improve the pass rate.** The ceiling is 100%, so the largest possible gain
+is 11.4 points — inside the noise floor. 97 runs would give ±10, still
+marginal; resolving a real improvement up there needs several hundred.
+
+So truncation, `maxIter` and Haiku → Sonnet will all report "not
+distinguishable", and not because they did nothing.
+
+**Cost is where the comparisons live.** A continuous measure compares
+distributions rather than counting successes, so a difference shows up with
+a fraction of the samples a rate needs. `npm run baseline` now reports
+median, p10-p90 and mean time to a passing generation.
+
+**Latency, not tokens, and the reports say so.** `inputTokens` and
+`outputTokens` have existed since slice 1 and have never been populated.
+An extractor was written for them, and it was dead code: AgentKit's
+`AgentResult` carries `output`, `toolCalls`, `createdAt` and `prompt` and no
+usage at all. Token counts appear only on the streaming `run.completed`
+event, which `network.run()` never emits. Capturing them means moving the
+agent onto the streaming interface, which is not a mid-baseline change.
+
+So the extractor was deleted rather than left in place looking like working
+instrumentation. `durationMs` is recorded on every run, is continuous, and
+is a proxy for cost rather than a price — which is exactly the kind of
+substitution this project exists to refuse to make silently, so the comment
+in `functions.ts` and the output of `baseline` both name it.
+
+### The finding
+
+```
+  the old signal said 41/44 succeeded
+  of those, 5 did not compile  5/41 = 12.2%  [5.3%, 25.5%]
+```
+
+**The app reported success to the user on roughly one in seven runs whose
+code does not compile.** That is the number the project was built to
+produce, and it now has an interval around it.
+
+### Why this one counts
+
+```
+  0 build ran but could not be judged
+```
+
+Zero unjudged. Every run that produced code got a verdict. Previous
+attempts reported 52 unjudged against 13 counted, and every rate drawn from
+them was a statement about `tar`, file permissions, or a missing `.next`
+directory.
+
+### What it still cannot support
+
+- **21 runs, ±30 points.** A later batch must clear that bracket to have
+  moved. 97 runs would be needed for ±10.
+- **13 infrastructure faults** in the same batch — rate limits and sandbox
+  exhaustion. The surviving runs are therefore not a random sample of the
+  golden set.
+- **2 runs still RUNNING**, never swept.
+- `adversarial-01` passes, which means the adversarial tier is not
+  discriminating: "Make it better" produces a confident invention, and a
+  confident invention compiles. The compiler cannot tell invention from
+  correctness.
+
+### The model bet
+
+The policy pinned the **lightest** tier with heavier ones documented as
+upgrades, on the argument that starting heavy hides the question. Haiku is
+typechecking at 90.5%. No measurement yet says Sonnet would be better, and
+now there is a baseline to test that against.
+
+---
+
 ## Agreed sequence — 17 Sept
 
 Decided deliberately, recorded so the order survives the next interruption.
@@ -83,6 +183,25 @@ Decided deliberately, recorded so the order survives the next interruption.
 
 - It is a prerequisite, not a result. The baseline describes Next 16 output, and pre-bump runs are not comparable to post-bump ones.
 - If `create-next-app@16` breaks shadcn compatibility, step 3 catches it before a batch does.
+
+---
+
+## The template is the least-pinned part of the measurement
+
+Rebuilding it surfaced how much of the "target" was never fixed at all. Four things changed meaning without anything recording it:
+
+| | |
+|---|---|
+| `create-next-app` | `@15.3.3` → `@16`, a deliberate bump, but `@16` still floats within the major |
+| `shadcn` CLI | briefly `@latest` by accident — two builds a month apart would produce different targets |
+| `-b` | repurposed from base colour to component library between 2.x and 4.x |
+| `add --all` | **enumerates the live registry**, so the component set was never pinned even with a pinned CLI |
+
+That last one broke the build outright: shadcn@2.6.3 asked the registry for `questionnaire`, a component added after 2.6.3 shipped, and could not fetch it. **A pinned client defeated by an unpinned remote.**
+
+Now an explicit list of 29 components. Reproducible, roughly 40% smaller, and it should shorten `tsc --noEmit` — which was the slowest step in every check, spent almost entirely on components the agent never wrote.
+
+**The general problem remains open.** The template decides the framework version, the component library, and what the agent generates against. None of that appears in a `Run` row, so two batches built against different templates are not comparable and nothing would say so. Recording the template ID alongside `configVersion` is the fix, and it belongs with the interventions work.
 
 ---
 

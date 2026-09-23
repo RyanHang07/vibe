@@ -3,6 +3,7 @@ import { infrastructureFault, markFault } from "@/lib/faults";
 import {
   BUILD_CHECK_ENABLED,
   BUILD_CHECK_USER_SAMPLE_RATE,
+  BUNDLE_CHECK_ENABLED,
   BUILD_STDERR_LIMIT,
   BUNDLE_COMMAND,
   BUNDLE_TIMEOUT_MS,
@@ -232,7 +233,12 @@ export const runBuildCheck = async (
     TYPECHECK_TIMEOUT_MS,
   );
 
-  const bundle = await runCommand(sandbox, BUNDLE_COMMAND, BUNDLE_TIMEOUT_MS);
+  // Skipped rather than failed when disabled: "we did not check" and
+  // "it did not build" are different facts, and only one of them belongs
+  // in a rate.
+  const bundle = BUNDLE_CHECK_ENABLED
+    ? await runCommand(sandbox, BUNDLE_COMMAND, BUNDLE_TIMEOUT_MS)
+    : NOT_ATTEMPTED;
 
   return { typecheck, bundle };
 };

@@ -44,3 +44,6 @@ next-env.d.ts
 
 # inngest
 .inngest/main.db
+
+# clerk configuration (can include secrets)
+/.clerk/

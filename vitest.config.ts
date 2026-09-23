@@ -11,7 +11,12 @@ export default defineConfig({
     // not be able to stop them running". Add jsdom only when a test needs
     // a DOM, and say so in the commit.
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "evals/**/*.test.ts",
+      "scripts/**/*.test.ts",
+    ],
     clearMocks: true,
     restoreMocks: true,
   },

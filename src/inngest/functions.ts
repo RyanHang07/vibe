@@ -1,7 +1,12 @@
 import { inngest } from "./client";
 import { createAgent, createTool, createNetwork, type Tool, type Message, createState } from "@inngest/agent-kit";
 import { Sandbox } from "e2b";
-import { getSandbox, lastAssistantTextMessageContent, parseAgentOutput } from "./utils";
+import {
+  FALLBACK_FRAGMENT_TITLE,
+  getSandbox,
+  lastAssistantTextMessageContent,
+  parseAgentOutput,
+} from "./utils";
 import { z } from "zod";
 import { PROMPT, FRAGMENT_TITLE_PROMPT, RESPONSE_PROMPT } from "@/prompt";
 import { prisma } from "@/lib/db";
@@ -64,6 +69,7 @@ export const codeAgentFunction = inngest.createFunction(
         source: runSource,
         caseId: typeof event.data.caseId === "string" ? event.data.caseId : undefined,
         configVersion: CONFIG_VERSION,
+        sandboxTemplate: SANDBOX_TEMPLATE,
       }),
     );
 
@@ -405,16 +411,88 @@ export const codeAgentFunction = inngest.createFunction(
       model: modelFor({ role: "responder", apiKey, provider }),
     })
 
-    // Independent of each other — running them in sequence doubled the
-    // user-visible wait for no reason.
-    const [{ output: fragmentTitleOutput }, { output: responseOutput }] =
-      await Promise.all([
-        fragmentTitleGenerator.run(result.state.data.summary),
-        responseGenerator.run(result.state.data.summary),
-      ]);
+    /**
+     * Do not call the helpers with an empty summary.
+     *
+     * THIS IS THE 400.
+     *
+     * `agent.run("")` produces a request with an empty messages array, and
+     * the provider rejects it:
+     *
+     *   {"type":"invalid_request_error",
+     *    "message":"messages: at least one message is required"}
+     *
+     * AgentKit surfaces that as `AIGatewayError: unsuccessful status code:
+     * 400` with no body, which is why two weeks of diagnosis got no further
+     * than a status code. It was diagnosed as context exhaustion — a
+     * reading that never explained why `trivial-01` also failed.
+     *
+     * The `isError` check below would have caught the missing summary. It
+     * just ran after these calls rather than before, so a run that had
+     * already failed made one more request that could only fail.
+     *
+     * A failed generation should not be able to cause a second, different
+     * failure on the way out.
+     */
+    const summary = result.state.data.summary?.trim() ?? "";
+
+    const [fragmentTitleOutput, responseOutput] = summary
+      ? await Promise.all([
+          // Independent of each other — sequential runs doubled the
+          // user-visible wait for no reason.
+          fragmentTitleGenerator.run(summary).then((r) => r.output),
+          responseGenerator.run(summary).then((r) => r.output),
+        ])
+      : [null, null];
 
     const fileCount = Object.keys(result.state.data.files || {}).length;
     const hasSummary = Boolean(result.state.data.summary);
+
+    /**
+     * Token usage, summed across every agent turn.
+     *
+     * WHY THIS MATTERS MORE THAN IT LOOKS.
+     *
+     * The baseline sits at 88.6% typecheck with ±19 points of resolution at
+     * 44 runs. The ceiling is 100%, so the most any intervention could gain
+     * is 11.4 points — inside the noise floor. **No change to the agent can
+     * be shown to improve the pass rate at any sample size this project
+     * will realistically run.**
+     *
+     * Continuous measures do not have that problem. A difference in tokens
+     * or latency compares distributions rather than counting successes, and
+     * is visible with a fraction of the samples.
+     *
+     * So cost per successful generation becomes the metric that can actually
+     * answer the interesting questions — does Sonnet earn its price, does
+     * truncation reduce context, is a lower `maxIter` cheaper without
+     * costing quality. The columns have existed since slice 1 and were
+     * never filled.
+     *
+     * Defensive: AgentKit's usage shape is not guaranteed, and a missing
+     * token count must stay null rather than become zero. Zero would be
+     * recorded as "free", which is a lie that averages badly.
+     */
+    /**
+     * TOKEN COUNTS ARE NOT AVAILABLE THROUGH THIS API.
+     *
+     * `AgentResult` carries `output`, `toolCalls`, `createdAt` and `prompt`
+     * — no usage. Token counts appear only on AgentKit's streaming
+     * `run.completed` event, which `network.run()` never emits. Capturing
+     * them means moving the agent onto the streaming interface, which is a
+     * real change and not one to make mid-baseline.
+     *
+     * An earlier version of this code searched `result.state.results` for a
+     * `tokens` field, found nothing, and silently recorded undefined — dead
+     * code that looked like working instrumentation. That is the same shape
+     * as every other failure in this project: a mechanism that appears
+     * present and does nothing.
+     *
+     * `durationMs` is already recorded on every run and is continuous, so
+     * cost comparisons use latency for now. It is a proxy rather than a
+     * price, and the reports say so.
+     */
+    const usage = { input: undefined, output: undefined };
 
     // The existing success heuristic: "the agent said something and wrote a
     // file". Slice 2 replaces this with an actual build result. It is kept
@@ -442,13 +520,17 @@ export const codeAgentFunction = inngest.createFunction(
       return await prisma.message.create({
         data: {
           projectId: event.data.projectId,
-          content: parseAgentOutput(responseOutput),
+          content: responseOutput
+            ? parseAgentOutput(responseOutput)
+            : "Generated, but the agent did not describe what it built.",
           role: "ASSISTANT",
           type: "RESULT",
           fragment: {
             create: {
               sandboxUrl: sandboxUrl,
-              title: parseAgentOutput(fragmentTitleOutput),
+              title: fragmentTitleOutput
+                ? parseAgentOutput(fragmentTitleOutput)
+                : FALLBACK_FRAGMENT_TITLE,
               files: result.state.data.files,
             }
           }
@@ -498,6 +580,8 @@ export const codeAgentFunction = inngest.createFunction(
               .filter(Boolean)
               .join("\n")
           : undefined,
+        inputTokens: usage.input,
+        outputTokens: usage.output,
         checks,
       }),
     );

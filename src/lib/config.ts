@@ -48,6 +48,35 @@ export const BUILD_CHECK_ENABLED =
   (process.env.VIBE_BUILD_CHECK ?? "true") !== "false";
 
 /**
+ * Run the bundle step at all. On by default.
+ *
+ * THE BUNDLE STEP NEEDS A LARGER SANDBOX THAN THE E2B DEFAULT.
+ *
+ * Turbopack compiling Next 16 with 318 packages does not fit in the default
+ * 1024 MB: `next build` is killed mid-compile with `exit -1` and no output
+ * at all, on a pristine project. The silence is the signature — a process
+ * that fails explains itself, and Turbopack is loud when it fails.
+ *
+ * Fixed at template build time, not here:
+ *
+ *   npx @e2b/cli template create <name> --memory-mb 4096 --cpu-count 4
+ *
+ * The `memory_mb` key in e2b.toml is ignored; it has to be the flag.
+ *
+ * This switch exists because sandbox size multiplies across a batch — one
+ * per case — so if the cost is not worth it, typecheck alone remains a
+ * defensible signal. `tsc --noEmit` catches wrong props, missing imports
+ * and invented APIs, which is most of how generated code is wrong.
+ * Bundling adds syntax errors and client/server boundary violations: real,
+ * but a smaller class.
+ *
+ * If it is ever turned off, the limitation belongs in the writeup rather
+ * than hidden. A signal that never runs is not a signal.
+ */
+export const BUNDLE_CHECK_ENABLED =
+  (process.env.VIBE_BUNDLE_CHECK ?? "true") !== "false";
+
+/**
  * How often to build-check a real user's run. Default: never.
  *
  * Measured at 93.4s of a 103.8s run. The user's result message is written
@@ -111,7 +140,24 @@ export const CHECK_PREPARE_COMMAND =
     // copy, and eighteen runs burned the full five-minute timeout before
     // anyone could see why.
     "tar xf /tmp/vibe-src.tar -C /tmp/vibe-build",
-    "ln -s /home/user/node_modules /tmp/vibe-build/node_modules",
+    // Hardlink node_modules, do not symlink it.
+    //
+    // A symlink was the obvious choice — no data copied, hundreds of
+    // megabytes saved. Turbopack rejects it outright:
+    //
+    //   TurbopackInternalError: Symlink [project]/node_modules is invalid,
+    //   it points out of the filesystem root
+    //
+    // TypeScript could not resolve through it either, which produced
+    // `Cannot find module 'lucide-react'` and `'class-variance-authority'`
+    // across the shadcn components — failures that looked exactly like the
+    // agent importing packages that were not installed.
+    //
+    // `cp -al` creates real directory entries pointing at the same inodes:
+    // no data copied, no symlink, and the tree looks entirely ordinary to
+    // anything walking it. Falls back to a real copy if /tmp and /home turn
+    // out to be different filesystems, where hardlinks cannot cross.
+    "(cp -al /home/user/node_modules /tmp/vibe-build/node_modules || cp -r /home/user/node_modules /tmp/vibe-build/node_modules)",
     // Replace the copy's Next config so the bundle step does nothing but
     // bundle.
     //
@@ -126,7 +172,34 @@ export const CHECK_PREPARE_COMMAND =
     // tradeoff: a generation that needs a custom next.config loses it here.
     // Rare, and it costs a bundle result rather than a type result.
     "rm -f /tmp/vibe-build/next.config.*",
-    "printf 'const c={typescript:{ignoreBuildErrors:true},eslint:{ignoreDuringBuilds:true}};export default c;\\n' > /tmp/vibe-build/next.config.mjs",
+    // No `eslint` key: Next 16 removed the built-in lint integration, and
+    // an unknown config key fails the build — which also takes `next
+    // typegen` down with it, leaving the generated types missing and the
+    // typecheck failing for a reason that has nothing to do with types.
+    "printf 'const c={typescript:{ignoreBuildErrors:true}};export default c;\\n' > /tmp/vibe-build/next.config.mjs",
+    // Regenerate Next's own types in the copy.
+    //
+    // Next 16 writes types into `.next/types` and references them from
+    // `app/layout.tsx` — `LayoutProps<"/">` and friends. The copy excludes
+    // `.next` (it belongs to the dev server), so those types were absent and
+    // `tsc --noEmit` failed on EVERY project with
+    // `TS2304: Cannot find name 'LayoutProps'`, including "Hello world".
+    //
+    // That produced a 0% typecheck rate across all 16 runs — a clean,
+    // plausible, completely false result about the agent. The failure was a
+    // legitimate non-zero exit from a real type error, so no
+    // infrastructure-fault guard could have caught it. Only the taxonomy
+    // did, by showing the same TS2304 on the trivial cases.
+    //
+    // `|| true`: if typegen is unavailable the checks should still run and
+    // report honestly, rather than the whole prepare step failing.
+    // `cd` into the copy first. The chain does `cd /home/user` before the
+    // tar, so typegen was running there and writing types into
+    // /home/user/.next — the copy stayed exactly as empty of them as
+    // before, and `TS2304: Cannot find name 'LayoutProps'` persisted
+    // through a fix that looked correct in the diff.
+    "cd /tmp/vibe-build",
+    "(./node_modules/.bin/next typegen || true)",
   ].join(" && ");
 
 /**
@@ -183,7 +256,15 @@ export const BUNDLE_COMMAND =
     // "⚠ Linting is disabled.": it never reached the compiler at all.
     //
     // An explicit path cannot silently become a network call.
-    "NEXT_TELEMETRY_DISABLED=1 ./node_modules/.bin/next build --no-lint",
+    // No `--no-lint`. Next 16 removed the flag along with the built-in lint
+    // integration, and passing it fails with `unknown option '--no-lint'`
+    // before the build starts.
+    //
+    // The flag is also unnecessary now: with no lint step in `next build`,
+    // there is nothing to skip. Type checking is disabled through the
+    // generated next.config above, since `tsc --noEmit` measures that
+    // separately.
+    "NEXT_TELEMETRY_DISABLED=1 ./node_modules/.bin/next build",
   ].join(" && ");
 
 /** The copy is made by the command itself, so start from the project root. */

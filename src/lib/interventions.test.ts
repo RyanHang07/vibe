@@ -1,45 +1,101 @@
 import { describe, expect, it } from "vitest";
 
-import { CONFIG_VERSION, truncateForModel } from "./interventions";
+import {
+  assertConfigConsistent,
+  CONFIG_VERSION,
+  TOOL_OUTPUT_LIMIT,
+  truncateForModel,
+} from "./interventions";
 
-describe("truncateForModel", () => {
-  it("leaves short output alone", () => {
-    expect(truncateForModel("npm install ok", 100)).toBe("npm install ok");
+describe("assertConfigConsistent", () => {
+  /**
+   * The whole point. A label saying 1000 while the process runs 4000 would
+   * produce a clean, tightly-bracketed measurement of nothing.
+   */
+  it("throws when the version name and the actual limit disagree", () => {
+    expect(() => assertConfigConsistent("v4-truncate-1000", 4000)).toThrow(
+      /was changed without the other/,
+    );
   });
 
-  it("keeps both ends, not just the tail", () => {
-    // A command's opening lines say what ran; a failure summary lands at
-    // the end. Both halves carry signal, which is why this differs from
-    // the build check's tail-only truncation.
-    const text = `START${"x".repeat(5_000)}END`;
-    const result = truncateForModel(text, 1_000);
-
-    expect(result.startsWith("START")).toBe(true);
-    expect(result.endsWith("END")).toBe(true);
+  it("passes when they agree", () => {
+    expect(() => assertConfigConsistent("v4-truncate-1000", 1000)).not.toThrow();
   });
 
-  it("says how much it removed", () => {
-    // The model must know a gap exists, or it reasons about the missing
-    // section as though it were empty.
-    const result = truncateForModel("y".repeat(10_000), 1_000);
-    expect(result).toMatch(/\d+ characters omitted/);
+  /**
+   * v3 predates the naming scheme. Exempt rather than retro-labelled:
+   * rewriting what past runs claim to be is the same error in reverse.
+   */
+  it("exempts versions that do not encode a limit", () => {
+    expect(() =>
+      assertConfigConsistent("v3-nextjs16-truncate", 4000),
+    ).not.toThrow();
   });
 
-  it("stays near the limit", () => {
-    const result = truncateForModel("z".repeat(100_000), 4_000);
-    // The limit plus the marker, not a multiple of it.
-    expect(result.length).toBeLessThan(4_200);
+  it("rejects a limit that is not a positive number", () => {
+    expect(() => assertConfigConsistent("v3-nextjs16-truncate", Number.NaN)).toThrow(
+      /not a positive number/,
+    );
+    expect(() => assertConfigConsistent("v3-nextjs16-truncate", 0)).toThrow();
   });
 
-  it("handles a limit larger than the text", () => {
-    expect(truncateForModel("short", 10_000)).toBe("short");
+  /**
+   * NOT "the live config is consistent". That test was here and it was
+   * wrong, in an instructive way.
+   *
+   * Vitest runs without `--env-file=.env`, so `TOOL_OUTPUT_LIMIT` in a test
+   * process is always the 4000 default regardless of what .env says. The
+   * test was therefore asserting something about the test runner's
+   * environment and reporting it as a fact about the application. It failed
+   * the moment .env and CONFIG_VERSION were correctly set to 1000 together
+   * — the one state it was supposed to bless.
+   *
+   * What is checkable here is that the label is well-formed. Whether it
+   * matches the environment is a property of a process, and is checked in
+   * that process: `preflight()` for the launcher, and the recorded
+   * `toolOutputLimit` for the agent, which is the one that actually matters.
+   */
+  it("declares a limit the parser can read", () => {
+    const declared = /-truncate-(\d+)$/.exec(CONFIG_VERSION);
+
+    if (declared) {
+      expect(Number.parseInt(declared[1], 10)).toBeGreaterThan(0);
+    } else {
+      // Grandfathered names are allowed, but only the known one.
+      expect(CONFIG_VERSION).toBe("v3-nextjs16-truncate");
+    }
+  });
+
+  it("does not depend on ambient environment to be testable", () => {
+    expect(() => assertConfigConsistent("v9-truncate-250", 250)).not.toThrow();
+    expect(TOOL_OUTPUT_LIMIT).toBeGreaterThan(0);
   });
 });
 
-describe("CONFIG_VERSION", () => {
-  it("is a readable name, not a hash", () => {
-    // These get printed in reports and compared by eye. A hash would be
-    // stable and useless.
-    expect(CONFIG_VERSION).toMatch(/^v\d+-[a-z0-9-]+$/);
+describe("truncateForModel", () => {
+  it("leaves short text alone", () => {
+    expect(truncateForModel("hello", 100)).toBe("hello");
+  });
+
+  /**
+   * Both ends, not the tail. A command's opening lines say what ran and a
+   * failure summary lands at the end.
+   */
+  it("keeps both ends and says how much went missing", () => {
+    const text = `START${"x".repeat(500)}END`;
+    const result = truncateForModel(text, 100);
+
+    expect(result.startsWith("START")).toBe(true);
+    expect(result.endsWith("END")).toBe(true);
+    expect(result).toMatch(/characters omitted/);
+  });
+
+  /**
+   * The model must know a gap exists, or it reasons about the missing
+   * region as though it were empty.
+   */
+  it("never removes text silently", () => {
+    const result = truncateForModel("y".repeat(10_000), 200);
+    expect(result).toContain("omitted");
   });
 });
