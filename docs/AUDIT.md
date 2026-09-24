@@ -1,6 +1,16 @@
-# DATUM: audit before the rebuild
+# Audit: what was wrong at the start
 
-Read of `main` as of 11 Sept 2026. Ordered by severity, not by effort.
+Read of `main` as of 11 Sept 2026, when this was still a tutorial-shaped
+app called Vibe. Ordered by severity, not by effort.
+
+> **All ten findings are now closed.** This document is kept as written —
+> including the two places where it diagnosed the symptom correctly and the
+> cause wrongly — because a record that gets edited to match the outcome
+> stops being a record. The resolutions are in blockquotes beneath the
+> table; the original analysis below them is untouched.
+>
+> Present state is in [`STATUS.md`](STATUS.md). What the near-misses added
+> up to is in [`WRITEUP.md`](WRITEUP.md).
 
 ---
 

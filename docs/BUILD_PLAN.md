@@ -1,13 +1,16 @@
-# Build plan — the remainder
+# Build plan
 
 > **Decided 23 Sept, after the first baseline.** Three phases, in order:
 > finish the loop, write it up, port the analysis layer to Python.
-> Everything else — trace visualisation, 3D terrain, multi-agent — is
-> deferred. They add polish to a claim that is not yet complete.
+> Everything else — trace visualisation, 3D terrain, multi-agent — deferred.
+> They add polish to a claim that is not yet complete.
 >
-> **Revised 23 Sept, after the loop closed.** A and B are done. A fourth
-> phase was added ahead of C: the measurement exists entirely in CLI scripts
-> and markdown, and none of it is visible in the product it measures.
+> **Revised the same day**, twice. A fourth phase went in ahead of C: the
+> measurement existed entirely in CLI scripts and markdown, and none of it
+> was visible in the product it measured. A fifth followed it, for the UI.
+>
+> **All five are now done.** What remains is listed at the bottom, and it is
+> short.
 
 ---
 
@@ -16,7 +19,7 @@
 | Phase | State |
 |---|---|
 | **A — finish the loop** | **done.** v5 → v6 measured end to end, paired, prediction on record beforehand, result NOT RESOLVED with its bound stated. Later found to have run against a template missing `lib/utils.ts`; kept and caveated rather than deleted. |
-| **B — the writeup** | **drafted.** `docs/WRITEUP.md`. Numbers are real; wants one editing pass. |
+| **B — the writeup** | **done.** [`WRITEUP.md`](WRITEUP.md), edited into one document rather than an accretion of findings. |
 | **D — surface it in the app** | **done.** D1 rename, D2 hero, D3 evidence tab, D4 live stages, D5 README. |
 | **E — UI overhaul** | **done.** Tokens, hero, project view, pricing, auth. Mobile collapse below `md`. |
 | **C — Python analysis layer** | **done.** `analysis/` with a `datum` CLI, reading a committed snapshot. Four TypeScript scripts deleted; `stats.ts` trimmed to the one function the app runs at request time. |
@@ -492,44 +495,58 @@ report fewer shapes.
 
 ---
 
-## Working order from here
+## Working order — as executed
 
-1. **Write the contract tests.** They fail immediately on anything still wrong.
-2. **Build `npm run doctor`.** One sandbox, no tokens.
-3. **Run doctor until green.** Every iteration is a minute and costs nothing but sandbox time.
-4. **`npm run eval smoke`** — 4 cases. Confirms the agent path.
-5. **`npm run eval`** — the baseline. **Only once 1-4 are green.**
-6. Re-test intervention v2.
+1. **Contract tests.** Failed immediately on things still wrong.
+2. **`npm run doctor`.** One sandbox, no tokens.
+3. **Doctor until green** — a minute per iteration, and it caught two
+   harness bugs that a batch would have reported as twenty-four bad
+   generations.
+4. **`npm run eval smoke`** — 4 cases, confirming the agent path.
+5. **`npm run eval`** — the baseline, only once 1-4 were green.
 
-`npm run verify` after every change. It already runs typecheck, lint and
-tests; the contract tests join it.
+`npm run verify` after every change: typecheck, lint, contract tests, and
+the fixture corpus both taxonomies are held to.
 
----
-
-## Open questions the baseline will answer
-
-- `lucide-react` — a harness gap, or the agent assuming a package the
-  template lacks? Genuinely ambiguous, and the distinction matters. Doctor
-  settles it: if a pristine template typechecks, the import is the agent's.
-- Is the 29-component list too narrow? `Module not found` in `shapes` is
-  the tell.
-- Does truncation (v2) help? Untested — the batch that tried it failed at
-  the provider on every case.
+**This order is the single most useful thing in this document.** Every time
+I skipped a rung, the cost was a batch.
 
 ---
 
-## Remaining slices
+## Open questions the baseline was meant to answer
 
-| Slice | State |
-|---|---|
-| 1-6 (record → interventions) | built |
-| Clean baseline | **blocked on layers 1-3** |
-| 2D trace view | not started |
-| 3D aggregate terrain | not started |
-| Writeup | not started |
+Kept with their answers, because two of them were resolved in a direction
+the question did not anticipate.
 
-Still open from `AUDIT.md`: S1 (key in event payloads), S3 (BYO-key billing),
-S7 (credit branch correct by accident).
+- **`lucide-react` — a harness gap, or the agent assuming a package the
+  template lacks?** *Answered: a harness gap, and a worse one than the
+  question allowed for.* The package was installed, unpinned, and lucide had
+  removed the brand icons the agent was importing. Not "does the template
+  have it" but "which version, on what day".
+- **Is the 29-component list too narrow?** *No — the problem was never the
+  component list.* It was two packages and a file the shadcn CLI stopped
+  writing.
+- **Does truncation help?** *Not resolved, with the bound stated.* Any
+  effect below ~7s is invisible to the design that tested it, and that
+  design was itself running against a broken target.
+
+---
+
+## What is left
+
+**Deferred, deliberately, and the claim is complete without them:**
+
+- 2D trace view
+- 3D aggregate terrain
+- multi-agent orchestration
+
+**Not deferred, just finished:** slices 1-6, the clean baseline, the
+writeup, the Python port, and every item in `AUDIT.md`.
+
+**Evals are over.** The dataset is fixed at `data/runs.json` and committed.
+`npm run doctor` remains available at one sandbox and zero tokens, which is
+what keeps *"did I break the harness"* separable from *"is the agent
+worse"*.
 
 ---
 

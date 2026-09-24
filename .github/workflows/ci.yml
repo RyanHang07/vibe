@@ -10,7 +10,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  # ------------------------------------------------------------------ #
+  # The harness: TypeScript, writes data.
+  # ------------------------------------------------------------------ #
+  harness:
+    name: Harness (TypeScript)
     runs-on: ubuntu-latest
 
     steps:
@@ -32,14 +36,26 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Includes the fixture corpus in evals/fixtures, which holds this
+      # taxonomy to the same contract the Python one is held to. It reads
+      # the fixtures relative to the working directory, so this must run
+      # from the repository root.
       - name: Test
         run: npm run test
 
       # Last, because it is the slowest and the steps above catch more.
       #
-      # Dummy values only. The build must not need real credentials — if it
+      # Dummy values only. The build must not need real credentials: if it
       # does, something is reading a secret at module scope rather than at
       # request time, and that is worth knowing.
+      #
+      # INNGEST_ENCRYPTION_KEY is the one exception, and deliberately so.
+      # `src/inngest/client.ts` throws at import when it is absent rather
+      # than falling back to sending user API keys in plaintext, which
+      # means a build without it fails here. That is the guard working: a
+      # security property that depends on an unchecked deploy step fails in
+      # a way indistinguishable from success, so it is checked at import
+      # and therefore at build time.
       - name: Build
         run: npm run build
         env:
@@ -47,3 +63,91 @@ jobs:
           DATABASE_URL: postgresql://user:pass@localhost:5432/db
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
           CLERK_SECRET_KEY: sk_test_ci_placeholder
+          INNGEST_ENCRYPTION_KEY: Y2ktcGxhY2Vob2xkZXIta2V5LW5vdC1hLXNlY3JldA==
+
+  # ------------------------------------------------------------------ #
+  # The analysis: Python, reads the snapshot, writes nothing.
+  #
+  # A separate job rather than a step, because the two halves fail for
+  # unrelated reasons and a single red tick would not say which.
+  # ------------------------------------------------------------------ #
+  analysis:
+    name: Analysis (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # `cache-dependency-path` is required: without it setup-python looks
+      # for a requirements file at the repository root, finds none, and
+      # fails the step rather than skipping the cache.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: analysis/pyproject.toml
+
+      - name: Install
+        working-directory: analysis
+        run: pip install -e ".[dev]"
+
+      # Includes tests/test_fixtures.py, which reads the same
+      # evals/fixtures/expectations.json the TypeScript suite does. If the
+      # two implementations ever disagree about what a captured failure
+      # means, one of these two jobs goes red.
+      - name: Test
+        working-directory: analysis
+        run: pytest -q
+
+  # ------------------------------------------------------------------ #
+  # Guards that are cheaper than either test suite.
+  # ------------------------------------------------------------------ #
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every fixture named in the contract must exist, and every fixture
+      # on disk must be named in the contract. A fixture added without an
+      # expectation is untested; an expectation without a fixture passes
+      # vacuously in one suite and errors in the other.
+      - name: Fixture corpus is complete
+        shell: bash
+        run: |
+          cd evals/fixtures
+          declared=$(grep -oE '"[a-z0-9-]+\.txt"' expectations.json | tr -d '"' | sort)
+          present=$(ls *.txt | sort)
+
+          if [ "$declared" != "$present" ]; then
+            echo "expectations.json and the fixture files disagree."
+            echo
+            echo "--- declared in expectations.json ---"
+            echo "$declared"
+            echo "--- present on disk ---"
+            echo "$present"
+            exit 1
+          fi
+
+          echo "$(echo "$present" | wc -l) fixtures, all accounted for."
+
+      # The run snapshot is the only copy of data that cost real money to
+      # produce, and `npm run report prune` deletes rows by design. If it
+      # ever stops being committed, every figure in the writeup becomes
+      # unreproducible and nothing else would say so.
+      - name: Run snapshot is committed
+        shell: bash
+        run: |
+          test -f data/runs.json || {
+            echo "data/runs.json is missing. Regenerate with 'npm run export'."
+            exit 1
+          }
+          python3 -c "
+          import json, sys
+          d = json.load(open('data/runs.json'))
+          n = len(d.get('runs', []))
+          print(f\"{n} runs, exported {d.get('exportedAt')}\")
+          print('configs:', ', '.join(d.get('configVersions', [])))
+          sys.exit(0 if n else 1)
+          "
