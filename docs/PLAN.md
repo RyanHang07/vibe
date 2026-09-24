@@ -1,9 +1,9 @@
-# Vibe: where this is going
+# Datum: where this is going
 
 Scoped to this repo. The full two-project plan lives in `ai-project/PLAN.md`.
 
 > Build an observe → diagnose → act → verify loop for AI agents.
-> Point it at Vibe.
+> Point it at Datum.
 > Show build success rate going from X to Y, with proof it wasn't noise.
 
 ---
@@ -138,7 +138,7 @@ The user's result message is written before the check starts, so nobody waits on
 
 That is a measurement degrading the thing it measures, which is how instrumentation gets switched off — and then you have neither.
 
-**Resolution:** eval runs are always checked; user runs never are, by default. `VIBE_BUILD_CHECK_USER_RATE` samples production traffic if that visibility is ever worth the cost. The baseline comes from the eval set regardless, so nothing is lost.
+**Resolution:** eval runs are always checked; user runs never are, by default. `DATUM_BUILD_CHECK_USER_RATE` samples production traffic if that visibility is ever worth the cost. The baseline comes from the eval set regardless, so nothing is lost.
 
 **Revised batch estimate:** ~104s per case at concurrency 2 across 24 cases is **roughly 20 minutes**, not the three minutes estimated from a build that was failing in 6s. Runnable, but not something to fire off casually.
 
@@ -328,7 +328,7 @@ Almost every multi-agent project *asserts* it's better. This one would **measure
 
 The genuinely agent-to-agent part: the Critic sends structured failures back to specific Builders, which revise. Needs a termination condition or it loops forever.
 
-Multi-agent usually loses to a single well-prompted agent because of context fragmentation. It wins on: truly independent subtasks, adversarial review by a different objective, per-agent tool access, per-job model choice. **Vibe hits all four**, which is why it's defensible here.
+Multi-agent usually loses to a single well-prompted agent because of context fragmentation. It wins on: truly independent subtasks, adversarial review by a different objective, per-agent tool access, per-job model choice. **Datum hits all four**, which is why it's defensible here.
 
 Expected new failure shapes, worth predicting before seeing them:
 

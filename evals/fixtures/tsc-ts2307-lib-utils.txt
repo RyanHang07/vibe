@@ -1,0 +1,1 @@
+app/components/stat-card.tsx(4,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.

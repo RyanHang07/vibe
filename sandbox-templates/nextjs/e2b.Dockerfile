@@ -186,6 +186,61 @@ RUN npx --yes shadcn@2.6.3 add --yes \
     radio-group scroll-area select separator sheet skeleton slider \
     sonner switch table tabs textarea tooltip
 
+# WRITE `lib/utils.ts` OURSELVES. The CLI did not.
+#
+# `npm run doctor` reported it missing from the template — source:NO,
+# copy:NO — on an otherwise green harness. Every shadcn component imports
+# `cn` from `@/lib/utils`, and so does almost every generated component,
+# because that is what a shadcn project looks like everywhere a model has
+# ever seen one.
+#
+# What it cost: `TS2307: Cannot find module '@/lib/utils'` on moderate-05
+# under v5, and a Turbopack `module-not-found` on the same import under v6,
+# both scored as bad generations. The agent was writing the only correct
+# thing available to it.
+#
+# Why it was missing is the interesting part. `shadcn init` normally
+# creates this file; `components.json` and the `@/*` tsconfig path both
+# landed, so init clearly ran. The 2.6.3 CLI against the current registry
+# does not produce the same filesystem it did when 2.6.3 shipped — the
+# fourth instance in this file of a pinned client defeated by an unpinned
+# remote, and the first where the missing piece was a file rather than a
+# package.
+#
+# So it is written here rather than requested from a tool. A file this
+# template depends on should not arrive as a side effect of a CLI whose
+# behaviour changes underneath the pin.
+#
+# NO BACKSLASH ESCAPES IN THE CONTENT. One `echo` per line, appended.
+#
+# The first attempt used `printf '%s\n' 'line' 'line' … > lib/utils.ts`.
+# The file arrived as a single line — `tsc` reported six syntax errors all
+# on line 1, at columns up to 338 — because the `\n` did not survive the
+# trip through the Dockerfile parser and the shell to printf's format
+# string. Which layer ate it does not much matter; relying on it was the
+# mistake.
+#
+# A heredoc is the obvious alternative and needs BuildKit syntax this file
+# does not declare, failing confusingly when it is absent.
+#
+# `echo` per line has no escapes to lose: each one contributes its own
+# newline and nothing has to be interpreted. Ugly, and it cannot go wrong
+# in a way that produces a file which looks written and is not.
+#
+# Worth noting that `doctor` caught this on the next run, for one sandbox
+# and zero tokens. A batch would have reported the same syntax error as
+# twenty-four failed generations.
+RUN mkdir -p lib \
+ && echo '// Written by the sandbox template, not by `shadcn init`, which' > lib/utils.ts \
+ && echo '// stopped producing this file. See e2b.Dockerfile.' >> lib/utils.ts \
+ && echo 'import { clsx, type ClassValue } from "clsx"' >> lib/utils.ts \
+ && echo 'import { twMerge } from "tailwind-merge"' >> lib/utils.ts \
+ && echo '' >> lib/utils.ts \
+ && echo 'export function cn(...inputs: ClassValue[]) {' >> lib/utils.ts \
+ && echo '  return twMerge(clsx(inputs))' >> lib/utils.ts \
+ && echo '}' >> lib/utils.ts \
+ && cat lib/utils.ts
+
 # WORKDIR moves out of nextjs-app BEFORE that directory is deleted.
 #
 # Without this the build fails on the next RUN with

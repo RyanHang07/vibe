@@ -11,10 +11,13 @@
     "eval": "tsx --env-file=.env scripts/run-eval.ts",
     "inngest": "inngest-cli dev -u http://localhost:3000/api/inngest",
     "report": "tsx --env-file=.env scripts/report.ts",
-    "baseline": "tsx --env-file=.env scripts/baseline.ts",
-    "power": "tsx --env-file=.env scripts/power.ts",
-    "compare": "tsx --env-file=.env scripts/compare.ts",
-    "shapes": "tsx --env-file=.env scripts/shapes.ts",
+    "export": "tsx --env-file=.env scripts/export.ts",
+
+    "baseline": "python -m datum_analysis.cli baseline",
+    "shapes": "python -m datum_analysis.cli shapes",
+    "power": "python -m datum_analysis.cli power",
+    "compare": "python -m datum_analysis.cli compare",
+
     "check:model": "tsx --env-file=.env scripts/check-model.ts",
     "doctor": "tsx --env-file=.env scripts/doctor.ts",
     "test": "vitest run",

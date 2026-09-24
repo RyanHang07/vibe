@@ -137,7 +137,10 @@ difference with its interval. When that interval includes zero it says
 
 ## Commands
 
+The harness is TypeScript; the analysis is Python. They meet at a snapshot.
+
 ```
+# harness — writes data
 npm run verify              # typecheck, lint, contract tests
 npm run doctor              # 1 sandbox, 0 tokens — is the harness sound?
 
@@ -145,17 +148,44 @@ npm run eval smoke          # 4 cases
 npm run eval cheap          # 10 cases, 2 per band
 npm run eval                # 24 cases — a real baseline
 
-npm run baseline            # rates with Wilson intervals, per tier, per config
-npm run shapes              # deterministic failure taxonomy
-npm run power               # can this experiment resolve anything?
-npm run compare a=… b=…     # paired comparison of two configurations
-
 npm run report              # run table, failures, timings
 npm run report sweep        # close abandoned runs
 npm run report prune        # drop rows that are not evidence
 
 npm run check:model         # provider bisect + API key provenance
+npm run export              # snapshot the Run table to data/runs.json
+
+# analysis — reads the snapshot, writes nothing
+npm run baseline version=…  # rates with Wilson intervals, per tier, per config
+npm run shapes version=…    # deterministic failure taxonomy
+npm run power version=…     # can this experiment resolve anything?
+npm run compare v6 v7       # paired comparison of two configurations
 ```
+
+The four analysis commands shell out to the `datum` CLI in `analysis/`, so
+they need its virtual environment active:
+
+```bash
+cd analysis && python -m venv .venv && . .venv/bin/activate   # or .venv\Scripts\activate
+pip install -e ".[dev]"
+pytest
+```
+
+`datum baseline version=v7` works directly too. Both the dashless form and
+`--version` are accepted — the dashless convention exists because npm
+consumes some dashed arguments before they reach a script, which once
+created twenty-four orphan projects when `--dry-run` was swallowed.
+
+### Why the analysis is Python
+
+The harness writes data and the analysis reads it: different jobs,
+different constraints, and statistical work is ordinary in Python where in
+TypeScript it is unusual.
+
+It reads `data/runs.json` rather than the database. That makes every figure
+in the writeup reproducible by anyone, without credentials and without a
+provider key — and means a reader poking at the data cannot damage rows
+that cost real money to produce.
 
 ---
 

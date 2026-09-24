@@ -50,6 +50,7 @@ import {
 import { inngest } from "../src/inngest/client";
 import { prisma } from "../src/lib/db";
 import { assertConfigConsistent } from "../src/lib/interventions";
+import { AGENT_CONCURRENCY } from "../src/lib/config";
 
 /** Marks projects created by the harness so they can be found and cleaned up. */
 const EVAL_USER_ID = "eval-harness";
@@ -86,7 +87,7 @@ const preflight = () => {
     problems.push("E2B_API_KEY is not set — every sandbox will fail to start.");
   }
 
-  const provider = process.env.VIBE_MODEL_PROVIDER ?? "anthropic";
+  const provider = process.env.DATUM_MODEL_PROVIDER ?? "anthropic";
   const modelKey =
     provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
   if (!process.env[modelKey]) {
@@ -292,13 +293,29 @@ const main = async () => {
 
   const batchId = new Date().toISOString().replace(/[:.]/g, "-");
 
-  // Observed ~65-100s per case end to end. Printed before anything is sent,
-  // because the cost of a batch is easy to forget when the command is short.
-  const estimateMinutes = Math.ceil((cases.length * 85) / args.concurrency / 60);
+  /**
+   * Estimated against AGENT_CONCURRENCY, not `args.concurrency`.
+   *
+   * The old estimate divided by the dispatch pool size, which reported
+   * "24 case(s), concurrency 1, ~34 min" for a batch that queued in eight
+   * seconds and then ran everything Inngest would let it. The number was
+   * wrong in both directions at once — too slow on duration, and implying a
+   * sandbox pressure of one.
+   *
+   * `args.concurrency` still throttles sending, which matters only for not
+   * hammering the events API. What decides how many sandboxes exist is the
+   * function's own concurrency limit.
+   */
+  const estimateMinutes = Math.ceil(
+    (cases.length * 85) / Math.min(AGENT_CONCURRENCY, cases.length) / 60,
+  );
 
   console.log(`batch ${batchId}`);
   console.log(
-    `${cases.length} case(s), concurrency ${args.concurrency}, ~${estimateMinutes} min`,
+    `${cases.length} case(s), up to ${AGENT_CONCURRENCY} running at once, ~${estimateMinutes} min`,
+  );
+  console.log(
+    `dispatch pool ${args.concurrency} — this only paces sending, not execution`,
   );
 
   if (cases.length >= EVAL_CASES.length) {

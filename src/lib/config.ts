@@ -7,23 +7,31 @@
  * (docs/PLAN.md, "What act means").
  */
 
-const int = (value: string | undefined, fallback: number): number => {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
+import { env, envFlag, envFloat, envInt } from "./env";
 
 /**
  * E2B sandbox template.
  *
  * This shipped as the literal "vibe-nextjs-ryan-test-2" — a personal test
  * template, hardcoded in the run path.
+ *
+ * THE TEMPLATE NAME IS NOT RENAMED WITH THE REST OF THE PROJECT.
+ *
+ * `vibe-nextjs-16` is a published E2B image, and its id is recorded on
+ * every run in the database as `sandboxTemplate`. Renaming it means
+ * rebuilding and republishing, which produces a new id, which makes every
+ * existing run incomparable to every future one — a change to the
+ * measurement target, dressed as a cosmetic rename.
+ *
+ * The identifier of a thing you have already measured against is not
+ * yours to tidy up.
  */
 export const SANDBOX_TEMPLATE =
-  process.env.VIBE_SANDBOX_TEMPLATE ?? "vibe-nextjs-ryan-test-2";
+  env("SANDBOX_TEMPLATE") ?? "vibe-nextjs-16";
 
 /** How long a sandbox stays alive. Was written as `3 * 10 * 60_000`. */
-export const SANDBOX_TIMEOUT_MS = int(
-  process.env.VIBE_SANDBOX_TIMEOUT_MS,
+export const SANDBOX_TIMEOUT_MS = envInt(
+  "SANDBOX_TIMEOUT_MS",
   30 * 60 * 1_000,
 );
 
@@ -34,18 +42,17 @@ export const SANDBOX_TIMEOUT_MS = int(
  * the same "Something went wrong" as a sandbox failure or a model error.
  * Distinguishing the two is tracked in docs/AUDIT.md S4.
  */
-export const MAX_AGENT_ITERATIONS = int(process.env.VIBE_MAX_ITERATIONS, 15);
+export const MAX_AGENT_ITERATIONS = envInt("MAX_ITERATIONS", 15);
 
 /** Prior messages replayed into agent state as conversation context. */
-export const MESSAGE_HISTORY_DEPTH = int(process.env.VIBE_HISTORY_DEPTH, 5);
+export const MESSAGE_HISTORY_DEPTH = envInt("HISTORY_DEPTH", 5);
 
 /* ---------------------------------------------------------------- *
  * Build check (docs/PLAN.md slice 2)
  * ---------------------------------------------------------------- */
 
 /** Off switch. The check costs sandbox time, so it must be disableable. */
-export const BUILD_CHECK_ENABLED =
-  (process.env.VIBE_BUILD_CHECK ?? "true") !== "false";
+export const BUILD_CHECK_ENABLED = envFlag("BUILD_CHECK");
 
 /**
  * Run the bundle step at all. On by default.
@@ -73,8 +80,7 @@ export const BUILD_CHECK_ENABLED =
  * If it is ever turned off, the limitation belongs in the writeup rather
  * than hidden. A signal that never runs is not a signal.
  */
-export const BUNDLE_CHECK_ENABLED =
-  (process.env.VIBE_BUNDLE_CHECK ?? "true") !== "false";
+export const BUNDLE_CHECK_ENABLED = envFlag("BUNDLE_CHECK");
 
 /**
  * How often to build-check a real user's run. Default: never.
@@ -91,8 +97,9 @@ export const BUNDLE_CHECK_ENABLED =
  * The general rule this encodes: instrumentation that degrades the product
  * gets switched off, and then you have neither.
  */
-export const BUILD_CHECK_USER_SAMPLE_RATE = Number.parseFloat(
-  process.env.VIBE_BUILD_CHECK_USER_RATE ?? "0",
+export const BUILD_CHECK_USER_SAMPLE_RATE = envFloat(
+  "BUILD_CHECK_USER_RATE",
+  0,
 );
 
 /**
@@ -123,23 +130,23 @@ export const BUILD_CHECK_USER_SAMPLE_RATE = Number.parseFloat(
  * copy is not paid for twice.
  */
 export const CHECK_PREPARE_COMMAND =
-  process.env.VIBE_PREPARE_COMMAND ??
+  env("PREPARE_COMMAND") ??
   [
-    "rm -rf /tmp/vibe-build /tmp/vibe-src.tar",
-    "mkdir -p /tmp/vibe-build",
+    "rm -rf /tmp/datum-build /tmp/datum-src.tar",
+    "mkdir -p /tmp/datum-build",
     "cd /home/user",
     // `--exclude='.wh.*'` is load-bearing. The Dockerfile's
     // `rm -rf /home/user/nextjs-app` deletes a directory that exists in a
     // lower image layer, and OverlayFS records that as a root-owned
     // whiteout marker `.wh.nextjs-app`. `tar` cannot read it as `user`,
     // exits non-zero, and takes the copy down with it.
-    "tar cf /tmp/vibe-src.tar --exclude=node_modules --exclude=.next --exclude='.wh.*' .",
+    "tar cf /tmp/datum-src.tar --exclude=node_modules --exclude=.next --exclude='.wh.*' .",
     // Two separate tar invocations rather than `tar cf - . | tar xf -`.
     // A pipeline reports the exit status of its LAST command, so a failed
     // source tar still looked successful, the build ran against a partial
     // copy, and eighteen runs burned the full five-minute timeout before
     // anyone could see why.
-    "tar xf /tmp/vibe-src.tar -C /tmp/vibe-build",
+    "tar xf /tmp/datum-src.tar -C /tmp/datum-build",
     // Hardlink node_modules, do not symlink it.
     //
     // A symlink was the obvious choice — no data copied, hundreds of
@@ -157,7 +164,7 @@ export const CHECK_PREPARE_COMMAND =
     // no data copied, no symlink, and the tree looks entirely ordinary to
     // anything walking it. Falls back to a real copy if /tmp and /home turn
     // out to be different filesystems, where hardlinks cannot cross.
-    "(cp -al /home/user/node_modules /tmp/vibe-build/node_modules || cp -r /home/user/node_modules /tmp/vibe-build/node_modules)",
+    "(cp -al /home/user/node_modules /tmp/datum-build/node_modules || cp -r /home/user/node_modules /tmp/datum-build/node_modules)",
     // Replace the copy's Next config so the bundle step does nothing but
     // bundle.
     //
@@ -171,12 +178,12 @@ export const CHECK_PREPARE_COMMAND =
     // typecheck runs against the same source with the real tsconfig. The
     // tradeoff: a generation that needs a custom next.config loses it here.
     // Rare, and it costs a bundle result rather than a type result.
-    "rm -f /tmp/vibe-build/next.config.*",
+    "rm -f /tmp/datum-build/next.config.*",
     // No `eslint` key: Next 16 removed the built-in lint integration, and
     // an unknown config key fails the build — which also takes `next
     // typegen` down with it, leaving the generated types missing and the
     // typecheck failing for a reason that has nothing to do with types.
-    "printf 'const c={typescript:{ignoreBuildErrors:true}};export default c;\\n' > /tmp/vibe-build/next.config.mjs",
+    "printf 'const c={typescript:{ignoreBuildErrors:true}};export default c;\\n' > /tmp/datum-build/next.config.mjs",
     // Regenerate Next's own types in the copy.
     //
     // Next 16 writes types into `.next/types` and references them from
@@ -198,7 +205,7 @@ export const CHECK_PREPARE_COMMAND =
     // /home/user/.next — the copy stayed exactly as empty of them as
     // before, and `TS2304: Cannot find name 'LayoutProps'` persisted
     // through a fix that looked correct in the diff.
-    "cd /tmp/vibe-build",
+    "cd /tmp/datum-build",
     "(./node_modules/.bin/next typegen || true)",
   ].join(" && ");
 
@@ -223,13 +230,13 @@ export const CHECK_PREPARE_COMMAND =
  * worth knowing about rather than hiding inside one number.
  */
 export const TYPECHECK_COMMAND =
-  process.env.VIBE_TYPECHECK_COMMAND ??
-  "cd /tmp/vibe-build && ./node_modules/.bin/tsc --noEmit";
+  env("TYPECHECK_COMMAND") ??
+  "cd /tmp/datum-build && ./node_modules/.bin/tsc --noEmit";
 
 export const BUNDLE_COMMAND =
-  process.env.VIBE_BUNDLE_COMMAND ??
+  env("BUNDLE_COMMAND") ??
   [
-    "cd /tmp/vibe-build",
+    "cd /tmp/datum-build",
     // `npx next build --no-lint`, not `npm run build`, for two reasons.
     //
     // LINT IS NOT THE SIGNAL. A run that reached the 10-minute timeout
@@ -268,7 +275,7 @@ export const BUNDLE_COMMAND =
   ].join(" && ");
 
 /** The copy is made by the command itself, so start from the project root. */
-export const BUILD_CHECK_CWD = process.env.VIBE_BUILD_CWD ?? "/home/user";
+export const BUILD_CHECK_CWD = env("BUILD_CWD") ?? "/home/user";
 
 /**
  * A hung build must not hold a sandbox open indefinitely. Kept well under
@@ -285,13 +292,10 @@ export const BUILD_CHECK_CWD = process.env.VIBE_BUILD_CWD ?? "/home/user";
  * concurrency cap, and it delays finding out something is wrong. The 5- and
  * 10-minute ceilings used earlier were sized for a hang, not for a build.
  */
-export const PREPARE_TIMEOUT_MS = int(process.env.VIBE_PREPARE_TIMEOUT_MS, 60_000);
+export const PREPARE_TIMEOUT_MS = envInt("PREPARE_TIMEOUT_MS", 60_000);
 /** Bundling alone is ~11s once type checking is out of the build. */
-export const BUNDLE_TIMEOUT_MS = int(process.env.VIBE_BUNDLE_TIMEOUT_MS, 90_000);
-export const TYPECHECK_TIMEOUT_MS = int(
-  process.env.VIBE_TYPECHECK_TIMEOUT_MS,
-  3 * 60_000,
-);
+export const BUNDLE_TIMEOUT_MS = envInt("BUNDLE_TIMEOUT_MS", 90_000);
+export const TYPECHECK_TIMEOUT_MS = envInt("TYPECHECK_TIMEOUT_MS", 3 * 60_000);
 
 /**
  * Release the sandbox once an eval run is measured.
@@ -306,8 +310,48 @@ export const TYPECHECK_TIMEOUT_MS = int(
  * Only eval runs. A user's sandbox is serving their live preview; killing
  * it would delete the thing they are looking at.
  */
-export const KILL_SANDBOX_AFTER_EVAL =
-  (process.env.VIBE_KILL_EVAL_SANDBOX ?? "true") !== "false";
+export const KILL_SANDBOX_AFTER_EVAL = envFlag("KILL_EVAL_SANDBOX");
+
+/**
+ * How many agent runs may execute at once.
+ *
+ * THE LEVER THAT ACTUALLY CONTROLS SANDBOX PRESSURE.
+ *
+ * `npm run eval concurrency=N` throttles how fast *events are sent*. It has
+ * almost nothing to do with how many sandboxes exist. The script's pool
+ * awaits `inngest.send`, which resolves as soon as the event is accepted —
+ * so twenty-four events go out over a few seconds regardless of the
+ * setting, and Inngest then runs the functions with its own concurrency,
+ * which was unset and therefore effectively unbounded.
+ *
+ * The batch output printed "concurrency 1", which reads as one run at a
+ * time and was never true. Every batch was sending the whole golden set at
+ * once and then meeting E2B's concurrent-sandbox cap, which surfaced as
+ * roughly fifteen infrastructure faults — the same count every time, which
+ * is what a ceiling looks like and not what contention looks like.
+ *
+ * THAT LAST PARAGRAPH TURNED OUT TO BE WRONG, AND IS LEFT AS WRITTEN.
+ *
+ * The fifteen faults were an artifact: `baseline.ts` scoped its rate query
+ * by config version and counted exclusions across the whole table, so every
+ * batch reported the same historical total. Constant because it was the
+ * same fifteen rows, not because anything hit a ceiling.
+ *
+ * The cap is kept — twenty-four sandboxes at once against a cap of about
+ * twenty is a real risk regardless — but it is untested, and the reasoning
+ * above is preserved rather than quietly corrected so the mistake stays
+ * visible next to the thing it produced.
+ *
+ * E2B caps concurrent sandboxes at about twenty. This sits below that with
+ * headroom, because USER runs share the same quota and hold their sandboxes
+ * for the full SANDBOX_TIMEOUT_MS so someone can look at the preview.
+ *
+ * Raising it trades batch duration for infrastructure faults. Check the
+ * fault count in `npm run baseline` after any change: a throttled batch
+ * reports rates drawn from whichever runs got through, which is not a
+ * random sample of the golden set.
+ */
+export const AGENT_CONCURRENCY = envInt("AGENT_CONCURRENCY", 12);
 
 /** How much build output to keep. Enough to diagnose, not enough to bloat a row. */
-export const BUILD_STDERR_LIMIT = int(process.env.VIBE_BUILD_STDERR_LIMIT, 4_000);
+export const BUILD_STDERR_LIMIT = envInt("BUILD_STDERR_LIMIT", 4_000);

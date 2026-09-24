@@ -1,5 +1,7 @@
 import { openai, anthropic } from "@inngest/agent-kit";
 
+import { env, envFloat, envInt } from "./env";
+
 /**
  * Provider-agnostic model selection.
  *
@@ -137,7 +139,7 @@ export const DEFAULT_PROVIDER: Provider = "anthropic";
 
 /** Provider for the whole run. Per-role override is deliberately not supported yet. */
 export const getProvider = (override?: string): Provider => {
-  const candidate = override ?? process.env.VIBE_MODEL_PROVIDER;
+  const candidate = override ?? env("MODEL_PROVIDER");
   return isProvider(candidate) ? candidate : DEFAULT_PROVIDER;
 };
 
@@ -161,28 +163,23 @@ export const providerForKey = (apiKey: string): Provider | undefined => {
 };
 
 const ROLE_ENV: Record<ModelRole, string> = {
-  coder: "VIBE_MODEL_CODER",
-  titler: "VIBE_MODEL_TITLER",
-  responder: "VIBE_MODEL_RESPONDER",
+  coder: "MODEL_CODER",
+  titler: "MODEL_TITLER",
+  responder: "MODEL_RESPONDER",
 };
 
 export const getModelId = (role: ModelRole, provider: Provider): string =>
-  process.env[ROLE_ENV[role]] ?? recommendedFor(role, provider).id;
+  env(ROLE_ENV[role]) ?? recommendedFor(role, provider).id;
 
 /**
  * Anthropic's API requires `max_tokens` on every request; OpenAI's does not.
  * Forgetting it is a request-time 400, so it is set here rather than left to
  * each call site to remember.
  */
-const ANTHROPIC_MAX_TOKENS = Number.parseInt(
-  process.env.VIBE_ANTHROPIC_MAX_TOKENS ?? "8192",
-  10,
-);
+const ANTHROPIC_MAX_TOKENS = envInt("ANTHROPIC_MAX_TOKENS", 8192);
 
 /** Low by default: the coder should be reproducible, not creative. */
-const CODER_TEMPERATURE = Number.parseFloat(
-  process.env.VIBE_CODER_TEMPERATURE ?? "0.1",
-);
+const CODER_TEMPERATURE = envFloat("CODER_TEMPERATURE", 0.1);
 
 export const envKeyFor = (provider: Provider): string | undefined =>
   provider === "anthropic"
@@ -215,7 +212,7 @@ export type ModelOptions = {
   role: ModelRole;
   /** Per-request key, e.g. a user-supplied one. Falls back to the environment. */
   apiKey?: string;
-  /** Overrides VIBE_MODEL_PROVIDER for this call. */
+  /** Overrides DATUM_MODEL_PROVIDER for this call. */
   provider?: Provider;
 };
 

@@ -1,3 +1,5 @@
+import { env, envInt } from "./env";
+
 /**
  * Interventions as versioned objects.
  *
@@ -60,8 +62,51 @@
  * about.
  *
  * If it does resolve, check the typecheck rate before calling it a win.
+ *
+ * Superseded by v7 below. Kept because v6 rows still claim this version.
  */
-export const CONFIG_VERSION = "v6-pinned-truncate-1000";
+
+/**
+ * v7: the template gained `lib/utils.ts`, which it never had.
+ *
+ * `npm run doctor`, extended to check FILES as well as packages, found
+ * `lib/utils.ts` missing from the template entirely — source and copy.
+ * Every shadcn component imports `cn` from `@/lib/utils`, and so does most
+ * generated code, so its absence produced `TS2307` and a Turbopack
+ * module-not-found that were both scored as bad generations.
+ *
+ * `shadcn init` had run: `components.json` and the `@/*` path mapping both
+ * landed. The 2.6.3 CLI against today's registry simply no longer writes
+ * that file. Fourth instance in one Dockerfile of a pinned client defeated
+ * by an unpinned remote, and the first where the missing piece was a file.
+ *
+ * A PREREQUISITE, NOT A MEASURED INTERVENTION — same call as v3 and v5. It
+ * changes what "correct output" means, so pre-v7 runs answer a different
+ * question. They are kept rather than pruned: v5 and v6 are real results
+ * about a target with a known gap, and deleting them would erase the
+ * evidence that the comparison was run and what it showed.
+ *
+ * WHAT THIS MEANS FOR v5 AND v6
+ *
+ * Both arms of the truncation comparison ran against a template missing
+ * this file, so at least two of v6's nine failures were the target rather
+ * than the agent. The comparison is not re-run here: `power` already said
+ * an 11.5s bar could not resolve an effect truncation plausibly has, and
+ * re-running an underpowered experiment on a better target produces a
+ * better-founded null. A baseline comes first.
+ *
+ * TRUNCATION STAYS AT 1000, AND THAT IS ARGUABLE.
+ *
+ * The tidier choice is to baseline on the default — 4000 — because an
+ * unresolved intervention should not become the thing later work is
+ * measured against. The counter-argument is that v5 vs v6 found no
+ * difference outside the noise, so which value the baseline carries is
+ * itself unresolved, and spending a version bump to move it buys nothing.
+ *
+ * Recorded rather than settled. If a later comparison needs a 4000 arm,
+ * this note is why it does not already exist.
+ */
+export const CONFIG_VERSION = "v7-utils-truncate-1000";
 
 /**
  * v5: the template gained the packages the agent assumes, and pinned them.
@@ -115,10 +160,7 @@ export const CONFIG_VERSION = "v6-pinned-truncate-1000";
  * failure and quietly degrades everything else still looks like a success
  * in a single headline number.
  */
-export const TOOL_OUTPUT_LIMIT = Number.parseInt(
-  process.env.VIBE_TOOL_OUTPUT_LIMIT ?? "4000",
-  10,
-);
+export const TOOL_OUTPUT_LIMIT = envInt("TOOL_OUTPUT_LIMIT", 4000);
 
 /**
  * The version label and the setting it names must agree.
@@ -160,7 +202,7 @@ export const assertConfigConsistent = (
 ): void => {
   if (!Number.isFinite(limit) || limit <= 0) {
     throw new Error(
-      `VIBE_TOOL_OUTPUT_LIMIT is "${process.env.VIBE_TOOL_OUTPUT_LIMIT}", ` +
+      `DATUM_TOOL_OUTPUT_LIMIT is "${env("TOOL_OUTPUT_LIMIT")}", ` +
         "which is not a positive number. Runs would record a config that " +
         "does not describe them.",
     );
@@ -172,11 +214,11 @@ export const assertConfigConsistent = (
   const expected = Number.parseInt(declared[1], 10);
   if (expected !== limit) {
     throw new Error(
-      `CONFIG_VERSION is "${version}" but VIBE_TOOL_OUTPUT_LIMIT is ${limit}.\n` +
+      `CONFIG_VERSION is "${version}" but DATUM_TOOL_OUTPUT_LIMIT is ${limit}.\n` +
         `The label says ${expected}. One of them was changed without the other, ` +
         "and every run from here would be recorded under a configuration it " +
         "did not run.\n" +
-        "Set VIBE_TOOL_OUTPUT_LIMIT in .env to match, or fix CONFIG_VERSION.",
+        "Set DATUM_TOOL_OUTPUT_LIMIT in .env to match, or fix CONFIG_VERSION.",
     );
   }
 };

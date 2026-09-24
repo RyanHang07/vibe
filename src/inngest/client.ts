@@ -47,15 +47,27 @@ if (!ENCRYPTION_KEY) {
 
 export const inngest = new Inngest({
   /**
-   * Still "my-app", deliberately.
+   * Renamed from "my-app", which was the tutorial's placeholder.
    *
-   * The app id is how Inngest identifies this application and its
-   * registered functions. Renaming it to "datum" registers a new app and
-   * orphans the existing one — which is a fine thing to do on purpose, and
-   * a bad thing to do inside a commit whose subject is encryption. It goes
-   * with the rest of the rename, after a working deploy.
+   * THIS REGISTERS A NEW APP IN INNGEST.
+   *
+   * The app id identifies the application and its functions. Changing it
+   * does not rename the existing app — it creates a second one and orphans
+   * the first, along with its run history and any in-flight events queued
+   * against it.
+   *
+   * Which is why it waited. It was deliberately left out of the encryption
+   * commit and out of the user-facing rename: a change that alters what
+   * Inngest considers "the app" should not ride along inside a change about
+   * something else, where its effect would be attributed to the wrong
+   * thing.
+   *
+   * After deploying this, the old `my-app` should be archived in the
+   * Inngest dashboard. Leaving it registered means a dashboard listing two
+   * apps where one is dead, which is the kind of ambiguity that costs
+   * someone twenty minutes at exactly the wrong moment.
    */
-  id: "my-app",
+  id: "datum",
   middleware: [
     encryptionMiddleware({
       key: ENCRYPTION_KEY,

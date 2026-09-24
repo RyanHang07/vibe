@@ -1,0 +1,2 @@
+AIGatewayError: Error making AI request: unsuccessful status code: 400
+body: {"type":"error","error":{"type":"invalid_request_error","message":"messages: at least one message is required"}}

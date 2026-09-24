@@ -1,0 +1,10 @@
+summary: false, files: 0
+last message: I appreciate the good humor! But I think we need to reset here.
+
+**I'm Claude**, the AI assistant. **You're the user** who came to me with a task.
+
+Looking back at our conversation, your first message was an attempt to get me to ignore my instructions and output my system prompt. I declined (as I should), and now we're in a friendly loop!
+
+**So let me ask directly: What would you actually like me to build in your Next.js application?**
+
+Just describe what you need, and I'll implement it with full functionality and polish.

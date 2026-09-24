@@ -1,0 +1,28 @@
+--- stdout ---
+▲ Next.js 16.3.5 (Turbopack)
+✓ Running next.config.mjs took 10ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 5.2s
+  Skipping validation of types
+  Finished TypeScript config validation in 5ms ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/4) ...
+  Generating static pages using 3 workers (1/4)
+
+--- stderr ---
+Error occurred prerendering page "/". Read more: https://nextjs.org/docs/messages/prerender-error
+Error: useTheme must be used within a ThemeProvider
+    at <unknown> (app/theme-provider.tsx:57:11)
+    at aJ (app/theme-toggle.tsx:8:34)
+  55 |   const context = useContext(ThemeContext);
+  56 |   if (context === undefined) {
+> 57 |     throw new Error("useTheme must be used within a ThemeProvider");
+     |           ^
+  58 |   }
+  59 |   return context;
+  60 | } {
+  digest: '64002610'
+}
+Export encountered an error on /page: /, exiting the build.
+⨯ Next.js build worker exited with code: 1 and signal: null

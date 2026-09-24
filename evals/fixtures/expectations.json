@@ -1,0 +1,62 @@
+{
+  "_comment": [
+    "The contract both taxonomies must satisfy. Read by",
+    "src/lib/taxonomy.fixtures.test.ts and analysis/tests/test_fixtures.py.",
+    "",
+    "`signature` is the identity the taxonomy must derive. `source` is which",
+    "check the failure belongs to. `why` is what the failure was really",
+    "about — not asserted, but the reason the fixture is worth keeping.",
+    "",
+    "A signature changing is a silent regression: nothing fails, the",
+    "taxonomy just reports fewer shapes. These assertions are what make it",
+    "loud."
+  ],
+
+  "tsc-ts2305-lucide-brand-icon.txt": {
+    "signature": "TS2305: Module <name> has no exported member <name>.",
+    "source": "typecheck",
+    "why": "lucide removed its brand icons at an unrecorded version. The template installed lucide unpinned, so whether this generation was wrong depended on the day the image was built. Scored against the agent three times."
+  },
+
+  "tsc-ts2307-lib-utils.txt": {
+    "signature": "TS2307: Cannot find module <name> or its corresponding type declarations.",
+    "source": "typecheck",
+    "why": "lib/utils.ts was missing from the template entirely. Every shadcn component imports cn from there, so the agent was writing the only correct thing available to it."
+  },
+
+  "next-export-not-found.txt": {
+    "signature": "Export not found: The export <name> was not found in module",
+    "source": "bundle",
+    "why": "Same cause as the TS2305 fixture, seen through Turbopack instead of tsc. Kept separate from 'Cannot find module': the package is present and the name is not in it, which points at a different fix."
+  },
+
+  "agent-refusal.txt": {
+    "signature": "Agent declined the request",
+    "source": "agent",
+    "why": "adversarial-01 is a prompt-injection attempt. The agent refused, which is correct, and the taxonomy recorded it as 'Agent produced no summary' — scoring right behaviour as a defect."
+  },
+
+  "tsc-harness-layoutprops.txt": {
+    "signature": "HARNESS: Next generated types missing — run `next typegen` in the copy",
+    "source": "typecheck",
+    "why": "Next 16 writes LayoutProps into .next/types, which the build copy excluded. Produced 0% typecheck across sixteen runs: a clean, plausible, entirely false result about a missing directory."
+  },
+
+  "provider-400.txt": {
+    "signature": "Provider rejected request (400)",
+    "source": "agent",
+    "why": "agent.run(\"\") on an empty summary. Misdiagnosed as context exhaustion for two weeks, which never explained why trivial-01 failed too."
+  },
+
+  "next-prerender-error.txt": {
+    "signature": "Prerender error: useTheme must be used within a ThemeProvider",
+    "source": "bundle",
+    "why": "The only failure class where typecheck passes, the bundle compiles, and the app is still broken — the output says 'Compiled successfully' four lines above the crash. Next prerenders static pages during build, so a component using a context outside its provider fails with no compile error at all. Sat in `unclassified` until someone read it, which is that bucket working as designed."
+  },
+
+  "tsc-ts1005-one-line-file.txt": {
+    "signature": "TS1005: <name> expected.",
+    "source": "typecheck",
+    "why": "A Dockerfile wrote lib/utils.ts with printf '%s\\n' and the newlines did not survive, producing a one-line file. Caught by doctor for one sandbox and zero tokens; a batch would have reported it as twenty-four bad generations."
+  }
+}

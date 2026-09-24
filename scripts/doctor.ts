@@ -207,12 +207,12 @@ const main = async () => {
         [
           'echo "--- package counts ---"',
           'echo -n "source: "; ls /home/user/node_modules 2>/dev/null | wc -l',
-          'echo -n "copy:   "; ls /tmp/vibe-build/node_modules 2>/dev/null | wc -l',
+          'echo -n "copy:   "; ls /tmp/datum-build/node_modules 2>/dev/null | wc -l',
           'echo "--- packages the typecheck could not find ---"',
           'for p in lucide-react class-variance-authority tw-animate-css; do' +
             ' printf "%-28s source:%s copy:%s\\n" "$p"' +
             ' "$(test -d /home/user/node_modules/$p && echo yes || echo NO)"' +
-            ' "$(test -d /tmp/vibe-build/node_modules/$p && echo yes || echo NO)";' +
+            ' "$(test -d /tmp/datum-build/node_modules/$p && echo yes || echo NO)";' +
             " done",
           'echo "--- memory ---"',
           "free -m 2>/dev/null | head -2 || echo '(free unavailable)'",
@@ -261,6 +261,72 @@ const main = async () => {
       "clsx",
       "tailwind-merge",
     ] as const;
+
+    /**
+     * Files a generated app will import, and the alias that reaches them.
+     *
+     * `@/lib/utils` failed on `moderate-05` under v5 (TS2307) and again in
+     * the v6 bundle, with Turbopack reporting `aliased to relative
+     * './lib/utils' inside of [project]`. Every shadcn component imports
+     * `cn` from there, so an agent writing `@/lib/utils` is writing the
+     * only correct thing — which makes a failure there the template's, not
+     * the generation's.
+     *
+     * Packages were already checked. Files were not, and a missing
+     * `lib/utils.ts` is indistinguishable from a missing package in the
+     * error it produces. Both get checked in the copy as well as the
+     * source, because the prepare step rebuilds the project in
+     * `/tmp/datum-build` and a file that exists in one and not the other is
+     * the exact shape of every harness bug this project has had.
+     */
+    const EXPECTED_FILES = [
+      "lib/utils.ts",
+      "components.json",
+      "tsconfig.json",
+    ] as const;
+
+    const files = await runStep(
+      sandbox,
+      "files",
+      [
+        `for f in ${EXPECTED_FILES.join(" ")}; do`,
+        ' printf "%-20s source:%s copy:%s\\n" "$f"',
+        ' "$(test -f /home/user/$f && echo yes || echo NO)"',
+        ' "$(test -f /tmp/datum-build/$f && echo yes || echo NO)";',
+        "done",
+        '; echo "--- @/ alias ---"',
+        "; grep -A3 '\"paths\"' /home/user/tsconfig.json 2>/dev/null || echo '(no paths in tsconfig)'",
+      ].join(" "),
+      30_000,
+    );
+
+    console.log("\n  files a generated app will import");
+    console.log(
+      files.output
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) => `    ${line}`)
+        .join("\n"),
+    );
+
+    const missingFiles = files.output
+      .split("\n")
+      .filter((line) => line.includes("NO"))
+      .map((line) => line.trim().split(/\s+/)[0]);
+
+    if (missingFiles.length > 0) {
+      steps.push({
+        ...files,
+        name: "files",
+        ok: false,
+        output: `missing from the template: ${missingFiles.join(", ")}\n\n${files.output}`,
+      });
+      console.log(
+        `\n    ${missingFiles.length} missing. A generation importing these\n` +
+          "    fails with TS2307 or a Turbopack module-not-found, and is\n" +
+          "    scored as bad code.",
+      );
+    }
 
     const presence = await runStep(
       sandbox,

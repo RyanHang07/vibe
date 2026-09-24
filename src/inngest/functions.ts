@@ -16,6 +16,7 @@ import { runBuildCheck } from "./build-check";
 import { infrastructureFault, markFault } from "@/lib/faults";
 import { CONFIG_VERSION, truncateForModel } from "@/lib/interventions";
 import {
+  AGENT_CONCURRENCY,
   KILL_SANDBOX_AFTER_EVAL,
   MAX_AGENT_ITERATIONS,
   MESSAGE_HISTORY_DEPTH,
@@ -53,7 +54,22 @@ interface AgentState {
  * than as a changed signature. The real error is the arity one above it.
  */
 export const codeAgentFunction = inngest.createFunction(
-  { id: "code-agent", triggers: [{ event: "code-agent/run" }] },
+  {
+    id: "code-agent",
+    triggers: [{ event: "code-agent/run" }],
+    /**
+     * Enforced here, where the runs actually happen.
+     *
+     * The eval script's `concurrency=` argument throttles event dispatch,
+     * which is not the same thing and never was: `inngest.send` resolves on
+     * acceptance, so the whole batch is queued within seconds whatever that
+     * number says, and Inngest then runs the functions unbounded.
+     *
+     * See AGENT_CONCURRENCY in lib/config.ts for the sandbox-quota
+     * reasoning.
+     */
+    concurrency: { limit: AGENT_CONCURRENCY },
+  },
   async ({ event, step }) => {
     // A user-supplied key, when present, overrides the environment for this run.
     // modelFor() throws with a readable message when neither is available.

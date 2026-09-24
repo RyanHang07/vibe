@@ -1,4 +1,4 @@
-# Vibe: audit before the rebuild
+# DATUM: audit before the rebuild
 
 Read of `main` as of 11 Sept 2026. Ordered by severity, not by effort.
 
@@ -11,6 +11,13 @@ Read of `main` as of 11 Sept 2026. Ordered by severity, not by effort.
 | **S1** | False API key security claim | **resolved** — copy fixed, and the key is now encrypted in transit through Inngest. See below. |
 | **S2** | Free tier at 100× Pro | **fixed** + invariant test |
 | **S3** | BYO-key inconsistent across paths, users pay twice | **resolved** — opposite to the fix this audit assumed. See below. |
+| **S4** | Nothing verifies the generated app works | **fixed** — typecheck + bundle on every run, recorded per run |
+| **S5** | Dev artifacts, stale models, magic numbers | **fixed** — `lib/config.ts`, `lib/models.ts` |
+| **S6** | `api-key-form.tsx` untyped and off-system | **fixed** |
+| **S7** | Credit error branch correct only by accident | **fixed** — named `OutOfCreditsError`, matched by shape. See below. |
+| **S8** | README claims features that don't exist | **fixed** — rewritten around the writeup, LICENSE added |
+| **S9** | No tests, no CI | **fixed** — vitest + GitHub Actions |
+| **S9a** | Build configured to ignore its own errors | **fixed** |
 
 > ### S1 and S3, resolved 23 Sept
 >
@@ -42,13 +49,19 @@ Read of `main` as of 11 Sept 2026. Ordered by severity, not by effort.
 > wrong about the cause: "make BYO-key consistent" would have been
 > satisfied by skipping credits on both paths, which is the change that
 > loses money on every run.
-| **S4** | Nothing verifies the generated app works | open — **this is the next piece of work** |
-| **S5** | Dev artifacts, stale models, magic numbers | **fixed** — `lib/config.ts`, `lib/models.ts` |
-| **S6** | `api-key-form.tsx` untyped and off-system | **fixed** |
-| **S7** | Credit error branch correct only by accident | open |
-| **S8** | README claims features that don't exist | open |
-| **S9** | No tests, no CI | **fixed** — vitest + GitHub Actions |
-| **S9a** | Build configured to ignore its own errors | **fixed** |
+
+> ### S7, resolved 23 Sept
+>
+> The branch worked for a reason nobody wrote down: `rate-limiter-flexible`
+> rejects with a plain `RateLimiterRes` when the limit is hit and a real
+> `Error` when something breaks, so `!(error instanceof Error)` happened to
+> mean "rate limited".
+>
+> `consumeCredits` now identifies the rejection by its shape
+> (`msBeforeNext` + `remainingPoints`) and throws a named
+> `OutOfCreditsError`. Anything else is rethrown as itself and becomes an
+> `INTERNAL_SERVER_ERROR` with the cause attached, so a broken database no
+> longer tells the user they are out of credits.
 
 ### Also found and fixed during the upgrade
 

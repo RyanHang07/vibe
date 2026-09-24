@@ -1,0 +1,12 @@
+   8 | import { Badge } from "@/components/ui/badge";
+>  9 | import { ArrowRight, Github, Linkedin, Mail } from "lucide-react";
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The export Linkedin was not found in module [project]/node_modules/lucide-react/dist/esm/lucide-react.mjs [app-ssr] (ecmascript).
+Did you mean to import Link?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./app/page.tsx [Client Component Browser]
+    ./app/page.tsx [Server Component]

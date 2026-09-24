@@ -136,7 +136,7 @@ minute.
 **A freshly scaffolded Next app must typecheck and build.** If it doesn't,
 the harness is broken — no generation involved, no ambiguity.
 
-### And doctor was still not enough
+### And doctor was still not enough, twice
 
 Doctor was green while `tailwind-merge` was missing.
 
@@ -149,6 +149,37 @@ So the check cannot be "does the scaffold compile." It has to be "does the
 scaffold contain what the agent will assume" — and that list is a judgement
 written down, not derived from anything. Doctor now asserts a named package
 set and prints each installed version, unconditionally, pass or fail.
+
+**Then the same thing happened again, one level down.** With the package
+check green, two more failures were still being scored against the agent:
+`TS2307: Cannot find module '@/lib/utils'`, and a Turbopack
+`module-not-found` on the same import.
+
+`lib/utils.ts` holds `cn`. Every shadcn component imports it, and so does
+almost every generated component, because that is what a shadcn project
+looks like everywhere a model has seen one. It was not in the template.
+`shadcn init` had clearly run — `components.json` and the `@/*` path
+mapping were both there — it simply no longer creates that file.
+
+The package check could not catch it, because it is not a package. So the
+list became packages **and files**, checked in the source and in the copy
+the build runs against, and the answer came back immediately:
+
+```
+lib/utils.ts      source:NO  copy:NO
+components.json   source:yes copy:yes
+tsconfig.json     source:yes copy:yes
+```
+
+Fourth instance in one Dockerfile of a pinned client defeated by an
+unpinned remote, and the first where the missing piece was a file rather
+than a package. It is now written by the template rather than requested
+from a tool: a file the measurement depends on should not arrive as a side
+effect of a CLI whose behaviour moves underneath the pin.
+
+The general lesson is not "check for files too". It is that **each version
+of this check was exactly as good as the failure that prompted it**, and
+the next gap will be something neither list contains.
 
 The general rule the project runs on:
 
@@ -353,6 +384,75 @@ specific, cheaper experiment next.
 
 ---
 
+## The comparison above was run on a broken target
+
+Written after the fact, and left in rather than quietly corrected.
+
+Both arms of that paired comparison ran against a template missing
+`lib/utils.ts` — the file holding `cn`, which nearly every generated
+component imports. At least two of v6's nine failures were the target
+rather than the agent, and `moderate-05` failed the same way under v5.
+
+So the comparison is not wrong in its method and is not usable as a result.
+It was a correctly-designed, correctly-powered, honestly-reported
+measurement of a system with a hole in it.
+
+That is the fifth time in this document, and the first one found by a check
+built *because of* the fourth. The package check caught nothing new; the
+file check caught this immediately. Each version of the instrument was
+exactly as good as the failure that prompted it.
+
+The runs are kept rather than deleted. They are real results about a target
+with a known gap, and erasing them would remove the evidence that the loop
+ran at all.
+
+---
+
+## The port found two bugs in the thing it was porting
+
+Rewriting the analysis in Python was supposed to be a language exercise with
+an architectural justification. It found two real defects in the
+TypeScript, both by the same mechanism: writing the same logic twice and
+making the two agree.
+
+**One: a taxonomy that fragmented instead of grouping.** Turbopack reports a
+missing export as `The export Linkedin was not found in module`, unquoted.
+The normaliser replaces quoted identifiers, so this one survived into the
+signature and every missing export became its own shape. A tally meant to
+say "this cause hit three runs" would have said "three causes hit one run
+each". The equivalent `tsc` error collapsed correctly, because tsc quotes
+the name — so the same failure grouped or fragmented depending on which
+tool noticed it.
+
+**Two, and worse: the exclusion counts were never filtered by
+configuration.** `baseline.ts` scoped its rate query by `configVersion` and
+then counted exclusions across the entire table:
+
+```ts
+prisma.run.count({ where: { source, status: "RUNNING" } })
+```
+
+No version filter. So every baseline, for every config, reported the same
+historical total.
+
+That is the source of a number quoted three times in this document:
+**"roughly fifteen infrastructure faults per batch, the same count every
+time."** It was constant because it was the same fifteen rows, counted
+again on every run.
+
+I read that constancy correctly — a ceiling looks different from
+contention — and then drew a confident conclusion from it about E2B's
+concurrent-sandbox limit, capped the agent's concurrency, and watched the
+count drop. The count dropped because the Python implementation scopes the
+query, not because the cap worked. **The cap may well be right. The
+evidence I gave for it was an artifact.**
+
+Which is the thesis, arriving at my own expense: a number can be stable
+across batches, consistent with a plausible mechanism, and entirely about a
+missing `WHERE` clause.
+
+---
+
 ## What it still cannot support
 
 Named here rather than in a footnote, because an honest limitations section
@@ -378,6 +478,69 @@ is the part that makes the rest credible.
   confident invention compiles. The compiler cannot tell invention from
   correctness, and no amount of interval arithmetic fixes that.
 - **Latency is a proxy for cost, not a price.**
+- **The adversarial tier now passes everything.** 5/5 on a band built from
+  vague requests, contradictory requirements and a prompt injection. Some
+  of its old failure rate was lucide drift, and one of its "failures" was
+  the agent correctly refusing an injection. A tier that discriminates
+  nothing is a limitation of the case set, and no amount of interval
+  arithmetic fixes it.
+- **The concurrency cap is untested**, for the reason given above. It is
+  probably right. The evidence offered for it was an artifact, and saying
+  so is cheaper than a batch.
+
+---
+
+## A note on how badly the terminal bug was handled
+
+Three of the near-misses above were found by a check. This one was found by
+a redirect, after two wrong diagnoses.
+
+`npm run shapes` appeared to drop rows for weeks. I blamed carriage returns
+in captured compiler output, wrote a sanitiser, and the rows kept
+disappearing. Then the Python port did the same thing on a different line,
+with clean ASCII strings it had built itself.
+
+The answer was `> out.txt`. Every line was present. PowerShell's console
+renders `·` as `V%`, and a mangled multi-byte sequence takes the rest of
+its line with it — every vanished line contained a `·`.
+
+The thirty-second check was available from the first report. I reached for
+a plausible mechanism instead, twice, in the same week I was writing an
+argument about separating cheap questions from expensive ones. The rule is
+easy to state and apparently quite hard to follow.
+
+---
+
+## What it looks like when the instrument is finally clean
+
+After the template was pinned, the file it was missing was written by hand,
+the exclusion query was scoped and the concurrency capped:
+
+```
+typecheck      24/27  =  88.9%  [71.9%, 96.1%]
+bundle         26/27  =  96.3%  [81.7%, 99.3%]
+
+the old signal said 25/27 succeeded
+of those, 1 did not compile   1/25 = 4.0%  [0.7%, 19.5%]
+```
+
+Five failures in four shapes, and **every one of them is the agent**: a
+type mismatch, a possibly-undefined, a run that produced no summary, and a
+component that compiled cleanly and then crashed while Next prerendered it.
+Zero unjudged. Zero stuck.
+
+That last failure is worth dwelling on. `next build` printed
+`✓ Compiled successfully` and then threw `useTheme must be used within a
+ThemeProvider`. Typecheck passed. The bundle compiled. The app was broken
+anyway — the only failure class where all the cheap signals agree and are
+all wrong. It sat in `unclassified` for a day because the taxonomy refuses
+to guess, which is the bucket working rather than failing.
+
+The instrument also got sharper in a way nobody asked for. Within-case
+spread fell from 14.2s to 5.0s, taking the paired resolution from 27% of
+the mean to 10%. Most of the old "agent variance" was sandbox contention.
+**Fixing the harness did not just remove false failures — it removed noise
+that was making every real comparison harder.**
 
 ---
 

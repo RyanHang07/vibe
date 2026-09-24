@@ -15,10 +15,38 @@
 
 | Phase | State |
 |---|---|
-| **A — finish the loop** | **done.** v5 → v6 measured end to end, paired, prediction on record beforehand, result NOT RESOLVED with its bound stated. |
+| **A — finish the loop** | **done.** v5 → v6 measured end to end, paired, prediction on record beforehand, result NOT RESOLVED with its bound stated. Later found to have run against a template missing `lib/utils.ts`; kept and caveated rather than deleted. |
 | **B — the writeup** | **drafted.** `docs/WRITEUP.md`. Numbers are real; wants one editing pass. |
-| **D — surface it in the app** | **in progress.** See below. Inserted ahead of C deliberately. |
-| **C — Python analysis layer** | not started. |
+| **D — surface it in the app** | **done.** D1 rename, D2 hero, D3 evidence tab, D4 live stages, D5 README. |
+| **E — UI overhaul** | **done.** Tokens, hero, project view, pricing, auth. Mobile collapse below `md`. |
+| **C — Python analysis layer** | **done.** `analysis/` with a `datum` CLI, reading a committed snapshot. Four TypeScript scripts deleted; `stats.ts` trimmed to the one function the app runs at request time. |
+
+### What phase C actually returned
+
+It was justified as an architecture — the harness writes data, the analysis
+reads it, and statistics is ordinary in Python where in TypeScript it is
+unusual. That held. But the return was three defects in the original, none
+of which would have been found by reading it:
+
+1. **Turbopack export-not-found fragmented into one shape per identifier.**
+   `Github` and `Linkedin` became two shapes for one cause. The `tsc` form
+   of the same failure grouped correctly, because tsc quotes the name.
+2. **Exclusion counts were never filtered by config.** Every baseline
+   reported the same historical total — which is the entire source of
+   "roughly fifteen infrastructure faults per batch, the same count every
+   time", a number quoted three times in the writeup. It was constant
+   because it was the same fifteen rows.
+3. **Runs that built successfully and then failed** were filed under
+   "Agent produced no summary".
+
+All three are the same shape: a category absorbing things it does not
+describe. Found by writing the logic twice and making the two agree.
+
+### Evals are finished
+
+The dataset is fixed and committed at `data/runs.json`. Everything
+remaining reads it. `npm run doctor` stays usable at one sandbox and zero
+tokens.
 
 **Why D jumped the queue.** A visitor opening the deployed app sees a
 tutorial: "Build opportunity with Vibe — create stunning applications and
@@ -36,18 +64,31 @@ different places, and only one of them is the thing people look at.
 became. A datum is the fixed reference point everything else is measured
 against, which is what a versioned baseline is.
 
-**User-facing strings only.** Deliberately NOT renamed:
+Done in two passes, deliberately.
 
-- `/tmp/vibe-build` and the other sandbox paths
-- `VIBE_*` environment variables
-- the E2B template name and id
+**First: user-facing strings only.** The internals were left alone because
+they are load-bearing, and renaming them in the same commit as some page
+copy would be a behaviour change wearing a cosmetic label.
 
-Those are load-bearing. `config.test.ts` asserts on the build path, the
-template name refers to a published E2B image, and the env vars appear in
-`.env` files that already exist. Renaming them would be a behaviour change
-wearing a cosmetic label — exactly the kind of substitution this project
-exists to refuse. They get their own commit, with `doctor` run afterwards,
-or they stay as they are.
+**Then, in its own commit, the internals:**
+
+- `/tmp/vibe-build` → `/tmp/datum-build`, with `config.test.ts` updated in
+  the same change and `doctor` run afterwards
+- `VIBE_*` → `DATUM_*`, through a single `lib/env.ts` reader
+
+The env vars needed more than a find-and-replace. Every setting has a
+fallback, so a `VIBE_` variable left in a `.env` after the code stopped
+reading it does not error — the app silently uses the default, and the only
+symptom is a configuration you believe is applied and is not. `env()`
+therefore **throws** when it finds a legacy variable whose replacement is
+missing, and names both.
+
+**The E2B template keeps its name.** `vibe-nextjs-16` is a published image
+whose id is recorded on every run as `sandboxTemplate`. Renaming means
+rebuilding, which produces a new id, which makes every existing run
+incomparable to every future one — a change to the measurement target
+dressed as a rename. The identifier of something already measured against
+is not ours to tidy up.
 
 ### D2 · An honest hero
 
@@ -319,7 +360,7 @@ Python is genuinely better at.
 ```
 analysis/
   pyproject.toml
-  vibe_analysis/
+  datum_analysis/
     db.py          # read-only access to the Run table
     stats.py       # Wilson intervals, paired comparison
     taxonomy.py    # failure signatures — port of the TS version
@@ -422,7 +463,7 @@ encode what each fix was for.
 - [ ] prepare excludes `.wh.*` — Docker whiteouts are root-owned and unreadable
 - [ ] prepare excludes `node_modules` and `.next`, and symlinks `node_modules`
 - [ ] prepare uses two `tar` calls, not a pipeline — a pipeline reports only the last command's status
-- [ ] all commands run against `/tmp/vibe-build`, never `/home/user` — that is the live preview
+- [ ] all commands run against `/tmp/datum-build`, never `/home/user` — that is the live preview
 - [ ] every binary is invoked by path, never through `npx` — npx falls back to the network
 
 ### Behaviour — existing files

@@ -1,6 +1,58 @@
 import { describe, expect, it } from "vitest";
 
-import { classify, normalise, tally, UNCLASSIFIED } from "./taxonomy";
+import { classify, normalise, sanitize, tally, UNCLASSIFIED } from "./taxonomy";
+
+describe("sanitize", () => {
+  /**
+   * The bug this exists for: a lone `\r` returns the terminal cursor to
+   * column zero, so the rest of the line overwrites what was already
+   * printed. `npm run shapes` appeared to drop entire rows. Nothing was
+   * dropped — it was written over, which looks identical to a printer bug.
+   */
+  it("removes carriage returns, which overwrite printed output", () => {
+    expect(sanitize("one\rtwo")).toBe("one two");
+  });
+
+  it("flattens newlines and tabs to single spaces", () => {
+    expect(sanitize("a\n\nb\tc")).toBe("a b c");
+  });
+
+  it("removes ANSI escape introducers that compilers emit for colour", () => {
+    expect(sanitize("\u001B[31merror\u001B[0m")).toBe("[31merror [0m");
+  });
+
+  it("leaves ordinary diagnostics untouched", () => {
+    const line = "error TS2307: Cannot find module 'tailwind-merge'.";
+    expect(sanitize(line)).toBe(line);
+  });
+
+  /**
+   * Windows compiler output is `\r\n` on every line, so this is the real
+   * shape of the input rather than a contrived one.
+   */
+  it("handles Windows line endings", () => {
+    expect(sanitize("first\r\nsecond\r\n")).toBe("first second");
+  });
+});
+
+describe("evidence is always printable", () => {
+  it("never contains a control character, whatever the input", () => {
+    const shape = classify(
+      "app/page.tsx(9,1): error TS2305: Module '\"lucide-react\"'\r\n has no exported member 'Github'.\r\n",
+    );
+
+    // eslint-disable-next-line no-control-regex
+    expect(shape.evidence).not.toMatch(/[\u0000-\u001F\u007F]/);
+  });
+
+  it("holds for unclassified output too, which is the least trusted", () => {
+    const shape = classify("something\r\nnobody\rhas seen\tbefore");
+
+    expect(shape.signature).toBe(UNCLASSIFIED);
+    // eslint-disable-next-line no-control-regex
+    expect(shape.evidence).not.toMatch(/[\u0000-\u001F\u007F]/);
+  });
+});
 
 /**
  * The property that matters is stability: two runs that failed the same way

@@ -31,24 +31,43 @@ afterEach(() => {
 
 describe("getProvider", () => {
   it("defaults to anthropic when nothing is set", () => {
-    delete process.env.VIBE_MODEL_PROVIDER;
+    delete process.env.DATUM_MODEL_PROVIDER;
     expect(getProvider()).toBe(DEFAULT_PROVIDER);
     expect(getProvider()).toBe("anthropic");
   });
 
-  it("reads VIBE_MODEL_PROVIDER", () => {
-    process.env.VIBE_MODEL_PROVIDER = "openai";
+  it("reads DATUM_MODEL_PROVIDER", () => {
+    process.env.DATUM_MODEL_PROVIDER = "openai";
     expect(getProvider()).toBe("openai");
   });
 
   it("falls back rather than throwing on an unknown provider", () => {
-    process.env.VIBE_MODEL_PROVIDER = "notaprovider";
+    process.env.DATUM_MODEL_PROVIDER = "notaprovider";
     expect(getProvider()).toBe(DEFAULT_PROVIDER);
   });
 
   it("lets an explicit argument win over the environment", () => {
-    process.env.VIBE_MODEL_PROVIDER = "anthropic";
+    process.env.DATUM_MODEL_PROVIDER = "anthropic";
     expect(getProvider("openai")).toBe("openai");
+  });
+
+  /**
+   * The rename guard. A `VIBE_` variable left in a `.env` after the code
+   * stopped reading it would otherwise be silently ignored, and the app
+   * would use the default while the operator believed otherwise.
+   */
+  it("throws rather than ignoring a leftover VIBE_ variable", () => {
+    delete process.env.DATUM_MODEL_PROVIDER;
+    process.env.VIBE_MODEL_PROVIDER = "openai";
+
+    expect(() => getProvider()).toThrow(/DATUM_MODEL_PROVIDER/);
+  });
+
+  it("does not complain once both are set", () => {
+    process.env.VIBE_MODEL_PROVIDER = "anthropic";
+    process.env.DATUM_MODEL_PROVIDER = "openai";
+
+    expect(getProvider()).toBe("openai");
   });
 });
 
@@ -83,28 +102,28 @@ describe("providerForKey", () => {
 
 describe("getModelId", () => {
   it("returns a different default per provider", () => {
-    delete process.env.VIBE_MODEL_CODER;
+    delete process.env.DATUM_MODEL_CODER;
     expect(getModelId("coder", "openai")).not.toBe(
       getModelId("coder", "anthropic"),
     );
   });
 
   it("lets an env override win over the provider default", () => {
-    process.env.VIBE_MODEL_CODER = "some-experimental-model";
+    process.env.DATUM_MODEL_CODER = "some-experimental-model";
     expect(getModelId("coder", "openai")).toBe("some-experimental-model");
     expect(getModelId("coder", "anthropic")).toBe("some-experimental-model");
   });
 
   it("scopes overrides to their own role", () => {
-    process.env.VIBE_MODEL_TITLER = "cheap-model";
+    process.env.DATUM_MODEL_TITLER = "cheap-model";
     expect(getModelId("titler", "openai")).toBe("cheap-model");
     expect(getModelId("coder", "openai")).not.toBe("cheap-model");
   });
 
   it("never returns an empty id for any role", () => {
-    delete process.env.VIBE_MODEL_CODER;
-    delete process.env.VIBE_MODEL_TITLER;
-    delete process.env.VIBE_MODEL_RESPONDER;
+    delete process.env.DATUM_MODEL_CODER;
+    delete process.env.DATUM_MODEL_TITLER;
+    delete process.env.DATUM_MODEL_RESPONDER;
 
     for (const provider of ["openai", "anthropic"] as const) {
       const models = describeModels(provider);

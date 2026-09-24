@@ -1,0 +1,28 @@
+[project]
+name = "datum-analysis"
+version = "0.1.0"
+description = "Analysis layer for the Datum measurement harness."
+requires-python = ">=3.11"
+
+# Deliberately thin.
+#
+# The harness writes data; this reads it. Reading a JSON snapshot and doing
+# arithmetic on it needs no dataframe library, and pulling one in would make
+# the dependency list larger than the code. psycopg is optional because the
+# committed snapshot is the primary source — see db.py.
+dependencies = []
+
+[project.optional-dependencies]
+# Live database access, for regenerating a snapshot.
+db = ["psycopg[binary]>=3.2"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+datum = "datum_analysis.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

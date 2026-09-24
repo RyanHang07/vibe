@@ -1,0 +1,2 @@
+app/layout.tsx(12,32): error TS2304: Cannot find name 'LayoutProps'.
+app/page.tsx(4,22): error TS2304: Cannot find name 'PageProps'.

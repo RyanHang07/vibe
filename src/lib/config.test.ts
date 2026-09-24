@@ -96,7 +96,7 @@ describe("prepare command", () => {
     // of them as before. The fix looked correct in the diff and changed
     // nothing.
     const typegenIndex = CHECK_PREPARE_COMMAND.indexOf("typegen");
-    const cdIntoCopy = CHECK_PREPARE_COMMAND.indexOf("cd /tmp/vibe-build");
+    const cdIntoCopy = CHECK_PREPARE_COMMAND.indexOf("cd /tmp/datum-build");
 
     expect(cdIntoCopy).toBeGreaterThan(-1);
     expect(cdIntoCopy).toBeLessThan(typegenIndex);
@@ -116,7 +116,7 @@ describe("all sandbox commands", () => {
     // `/home/user/.next` belongs to the dev server serving the user's
     // preview. Building there would destroy the thing they are looking at.
     for (const command of [TYPECHECK_COMMAND, BUNDLE_COMMAND]) {
-      expect(command).toContain("/tmp/vibe-build");
+      expect(command).toContain("/tmp/datum-build");
     }
   });
 

@@ -47,3 +47,24 @@ next-env.d.ts
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# python — the analysis layer
+#
+# A virtualenv is several thousand files. Without this, `git status` after
+# `pip install -e .` reports around 1900 changes and the real diff becomes
+# impossible to read — which is how unrelated things get committed by
+# accident.
+#
+# `analysis/data/` is deliberately NOT ignored: the run snapshot is the
+# point. Every row in it cost a sandbox and real tokens, the database is
+# the only other copy, and `npm run report prune` deletes rows by design.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.ruff_cache/
+
+# scratch output from redirecting a report to a file
+out.txt
